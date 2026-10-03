@@ -1,0 +1,1374 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WearCraft — User Manual</title>
+<style>
+  :root {
+    --bg: #1a1d23;
+    --panel: #20242b;
+    --card: #282c34;
+    --input: #32373f;
+    --fg: #e8eaed;
+    --fg2: #9aa0a6;
+    --fg3: #5f6368;
+    --accent: #5b8dd9;
+    --success: #4caf50;
+    --danger: #e53935;
+    --warn: #ff9800;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: "Segoe UI", "Noto Sans SC", -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+    font-size: 15px;
+    line-height: 1.65;
+  }
+  .container {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+  }
+
+  .lang-switch {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 1000;
+    background: var(--panel);
+    border: 1px solid var(--card);
+    border-radius: 10px;
+    padding: 4px;
+    display: flex;
+    gap: 2px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+  }
+  .lang-switch button {
+    background: transparent;
+    color: var(--fg2);
+    border: none;
+    border-radius: 7px;
+    padding: 7px 14px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .lang-switch button:hover { color: var(--fg); }
+  .lang-switch button.active {
+    background: var(--accent);
+    color: #fff;
+  }
+
+  header {
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--card);
+    margin-bottom: 32px;
+  }
+  header h1 {
+    font-size: 30px;
+    margin: 0 0 6px;
+    color: var(--accent);
+    font-weight: 700;
+    letter-spacing: -0.3px;
+  }
+  header .ver {
+    display: inline-block;
+    background: var(--card);
+    color: var(--fg2);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 6px;
+    margin-left: 10px;
+    vertical-align: middle;
+  }
+  header .sub {
+    color: var(--fg2);
+    font-size: 14px;
+    margin: 0;
+  }
+
+  nav.toc {
+    background: var(--panel);
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 40px;
+  }
+  nav.toc h2 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--fg3);
+    margin: 0 0 12px;
+    font-weight: 700;
+  }
+  nav.toc ol {
+    margin: 0;
+    padding-left: 20px;
+    columns: 2;
+    column-gap: 32px;
+  }
+  nav.toc li {
+    margin: 4px 0;
+    break-inside: avoid;
+  }
+  nav.toc a {
+    color: var(--fg2);
+    text-decoration: none;
+    transition: color 0.15s;
+  }
+  nav.toc a:hover { color: var(--accent); }
+
+  section {
+    margin-bottom: 56px;
+    scroll-margin-top: 20px;
+  }
+  section h2 {
+    font-size: 22px;
+    color: var(--fg);
+    border-left: 3px solid var(--accent);
+    padding-left: 14px;
+    margin: 0 0 20px;
+    font-weight: 600;
+  }
+  section h3 {
+    font-size: 16px;
+    color: var(--fg);
+    margin: 24px 0 10px;
+    font-weight: 600;
+  }
+  section p {
+    color: var(--fg2);
+    margin: 0 0 14px;
+  }
+  section ul, section ol {
+    color: var(--fg2);
+    padding-left: 24px;
+    margin: 0 0 16px;
+  }
+  section li {
+    margin: 6px 0;
+  }
+  section strong { color: var(--fg); font-weight: 600; }
+  section code {
+    background: var(--card);
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 13px;
+    color: var(--fg);
+  }
+
+  figure {
+    margin: 20px 0 28px;
+    background: var(--panel);
+    border-radius: 12px;
+    padding: 14px;
+  }
+  figure img {
+    width: 100%;
+    display: block;
+    border-radius: 8px;
+    background: var(--card);
+    cursor: zoom-in;
+    transition: opacity 0.15s;
+  }
+  figure img:hover {
+    opacity: 0.9;
+  }
+  figure figcaption {
+    color: var(--fg3);
+    font-size: 12px;
+    margin-top: 10px;
+    text-align: center;
+    font-style: italic;
+  }
+
+  .note, .warn {
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin: 16px 0;
+    font-size: 14px;
+  }
+  .note {
+    background: rgba(91, 141, 217, 0.12);
+    border-left: 3px solid var(--accent);
+    color: var(--fg2);
+  }
+  .warn {
+    background: rgba(255, 152, 0, 0.12);
+    border-left: 3px solid var(--warn);
+    color: var(--fg2);
+  }
+  .note strong, .warn strong { color: var(--fg); }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0 24px;
+    font-size: 14px;
+  }
+  th, td {
+    text-align: left;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--card);
+  }
+  th {
+    color: var(--fg3);
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    font-weight: 700;
+  }
+  td { color: var(--fg2); }
+  td strong { color: var(--fg); }
+
+  kbd {
+    background: var(--card);
+    border: 1px solid var(--input);
+    border-radius: 5px;
+    padding: 2px 8px;
+    font-family: Consolas, monospace;
+    font-size: 12px;
+    color: var(--fg);
+    box-shadow: 0 1px 0 var(--input);
+  }
+
+  .back {
+    display: inline-block;
+    margin-top: 12px;
+    color: var(--fg3);
+    font-size: 12px;
+    text-decoration: none;
+    transition: color 0.15s;
+  }
+  .back:hover { color: var(--accent); }
+
+  footer {
+    border-top: 1px solid var(--card);
+    margin-top: 60px;
+    padding-top: 24px;
+    color: var(--fg3);
+    font-size: 12px;
+    text-align: center;
+  }
+
+  /* Lightbox */
+  .lightbox {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(0, 0, 0, 0.92);
+    cursor: zoom-out;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .lightbox.open {
+    display: flex;
+  }
+  .lightbox img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: 6px;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.7);
+  }
+  .lightbox .close-hint {
+    position: absolute;
+    top: 16px;
+    right: 20px;
+    color: var(--fg2);
+    font-size: 13px;
+    background: rgba(0,0,0,0.6);
+    padding: 6px 12px;
+    border-radius: 6px;
+    pointer-events: none;
+  }
+
+  @media (max-width: 640px) {
+    .container { padding: 24px 14px 60px; }
+    header h1 { font-size: 24px; }
+    nav.toc ol { columns: 1; }
+    section h2 { font-size: 19px; }
+    .lang-switch { top: 8px; right: 8px; }
+    .lightbox { padding: 8px; }
+    .lightbox .close-hint { top: 8px; right: 8px; font-size: 11px; padding: 4px 8px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="lang-switch">
+  <button id="btn-ru" onclick="setLang('ru')">RU</button>
+  <button id="btn-en" onclick="setLang('en')">EN</button>
+  <button id="btn-zh" onclick="setLang('zh')">中文</button>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!--                        РУССКИЙ                        -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="container" id="content-ru">
+
+<header id="top-ru">
+  <h1>WearCraft <span class="ver">v1.0.0</span></h1>
+  <p class="sub">Процедурный генератор износа для PBR-текстур — Руководство пользователя</p>
+</header>
+
+<nav class="toc">
+  <h2>Содержание</h2>
+  <ol>
+    <li><a href="#intro-ru">Введение</a></li>
+    <li><a href="#ui-ru">Интерфейс</a></li>
+    <li><a href="#pbr-ru">Загрузка PBR</a></li>
+    <li><a href="#presets-ru">Пресеты</a></li>
+    <li><a href="#scratches-ru">Scratches</a></li>
+    <li><a href="#spots-ru">Spots</a></li>
+    <li><a href="#rust-ru">Rust</a></li>
+    <li><a href="#masks-ru">Маски</a></li>
+    <li><a href="#custom-ru">Custom Mask</a></li>
+    <li><a href="#params-ru">Параметры и вариации</a></li>
+    <li><a href="#tiling-ru">Тайлинг и превью</a></li>
+    <li><a href="#save-ru">Сохранение и экспорт</a></li>
+    <li><a href="#hotkeys-ru">Хоткеи</a></li>
+    <li><a href="#settings-ru">Info и настройки</a></li>
+    <li><a href="#license-ru">Лицензия</a></li>
+  </ol>
+</nav>
+
+<section id="intro-ru">
+  <h2>1. Введение</h2>
+  <p><strong>WearCraft</strong> — десктопное приложение для процедурной генерации износа PBR-текстур. Берёт готовый PBR-сет (albedo, normal, roughness, ao, height, metalness, edge) и генерирует N уникальных вариаций износа: царапины, пятна, ржавчину, кастомные маски.</p>
+  <p>Встроенный 3D-вьюер показывает результат в реальном времени. Превью полностью совпадает с запечённым результатом — то, что видишь, то и получишь.</p>
+  <p><strong>Для кого:</strong> 3D-художники, геймдев, все, кто работает с PBR.</p>
+  <p style="color: var(--fg3); font-size: 13px; margin-top: 20px;">💡 <strong>Подсказка:</strong> кликни по любому скриншоту — откроется полноэкранный просмотр. Esc или клик по фону — закрыть.</p>
+</section>
+
+<section id="ui-ru">
+  <h2>2. Интерфейс</h2>
+  <p>Окно разделено на три части: <strong>панель инструментов</strong> слева, <strong>3D-превью</strong> в центре, <strong>панель параметров</strong> справа.</p>
+  <figure>
+    <img src="screenshots/main_ui.jpg" alt="Главное окно WearCraft">
+    <figcaption>Рис. 1 — Главное окно: панель инструментов, 3D-превью, панель параметров.</figcaption>
+  </figure>
+  <figure>
+    <img src="screenshots/model_loaded.jpg" alt="3D-модель загружена">
+    <figcaption>Рис. 2 — Своя 3D-модель, загруженная в превью.</figcaption>
+  </figure>
+  <p><strong>Панель инструментов слева:</strong></p>
+  <ul>
+    <li><strong>Загрузить 3D</strong> — открыть 3D-модель (.obj / .gltf)</li>
+    <li><strong>Загрузить PBR</strong> — открыть PBR-карты</li>
+    <li><strong>Генерировать</strong> — запустить генерацию вариаций</li>
+    <li><strong>Сохранить</strong> — экспорт результата</li>
+    <li><strong>Сбросить PBR</strong> — очистить загруженные карты</li>
+    <li><strong>Настройки</strong> — параметры приложения</li>
+  </ul>
+  <p>Внизу окна — <strong>панель лога</strong>: свёрнутая показывает последнюю строку, клик по хедеру разворачивает историю.</p>
+</section>
+
+<section id="pbr-ru">
+  <h2>3. Загрузка PBR</h2>
+  <p>Загрузить PBR-карты можно тремя способами:</p>
+  <ol>
+    <li>Кнопка <strong>Загрузить PBR</strong> в панели слева</li>
+    <li>Хоткей <kbd>Ctrl</kbd>+<kbd>O</kbd></li>
+    <li>Перетащить файлы или папку прямо в окно превью</li>
+  </ol>
+  <p>Приложение само распознаёт карты по имени файла:</p>
+  <ul>
+    <li><code>*_albedo.png</code> / <code>*_basecolor.png</code> / <code>*_diffuse.png</code></li>
+    <li><code>*_normal.png</code> / <code>*_nrm.png</code></li>
+    <li><code>*_roughness.png</code> / <code>*_rough.png</code></li>
+    <li><code>*_ao.png</code> / <code>*_occlusion.png</code></li>
+    <li><code>*_height.png</code> / <code>*_displacement.png</code></li>
+    <li><code>*_metalness.png</code> / <code>*_metallic.png</code></li>
+    <li><code>*_edge.png</code> (опционально — карта краёв от предыдущих проходов)</li>
+  </ul>
+  <figure>
+    <img src="screenshots/pbr_loading.jpg" alt="PBR-карты загружены">
+    <figcaption>Рис. 3 — PBR-карты загружены. Галочки показывают, какие карты участвуют в генерации.</figcaption>
+  </figure>
+  <div class="note"><strong>Совет.</strong> Снимай галочки с карт, которые не хочешь трогать — они останутся без изменений в финале.</div>
+</section>
+
+<section id="presets-ru">
+  <h2>4. Пресеты</h2>
+  <p>WearCraft имеет четыре пресета. Переключение — дропдаун <strong>Preset</strong> в правой панели.</p>
+  <figure>
+    <img src="screenshots/presets.jpg" alt="Список пресетов">
+    <figcaption>Рис. 4 — Список пресетов: Custom, Scratches, Spots, Rust.</figcaption>
+  </figure>
+  <ul>
+    <li><strong>Custom</strong> — накладывает одну маску поверх PBR-сета. Работает только с albedo/roughness/normal.</li>
+    <li><strong>Scratches</strong> — процедурные царапины Безье. Форма генерится математически, без масок.</li>
+    <li><strong>Spots</strong> — пятна через маски (своя или из библиотеки).</li>
+    <li><strong>Rust</strong> — ржавчина через маски. Похож на Spots, но с другим набором цветов и параметром Volume.</li>
+  </ul>
+</section>
+
+<section id="scratches-ru">
+  <h2>5. Scratches</h2>
+  <p>Процедурные царапины — рисуются алгоритмом Безье, без масок. Параметры:</p>
+  <figure>
+    <img src="screenshots/scratches_params.jpg" alt="Пресет Scratches">
+    <figcaption>Рис. 5 — Пресет Scratches со всеми параметрами.</figcaption>
+  </figure>
+  <ul>
+    <li><strong>Density</strong> — количество царапин</li>
+    <li><strong>Length</strong> — средняя длина</li>
+    <li><strong>Thickness</strong> — толщина в пикселях</li>
+    <li><strong>Waviness</strong> — искривление</li>
+    <li><strong>Branches</strong> — вероятность ветвления</li>
+    <li><strong>Clusters</strong> — группировка царапин в кластеры</li>
+    <li><strong>Realistic</strong> — реалистичный разброс толщины и обрывов</li>
+    <li><strong>Rim highlight</strong> — светлая кромка вокруг царапин</li>
+    <li><strong>Normal enabled</strong> — влияние на карту normal</li>
+    <li><strong>Depth</strong> — глубина (сила влияния на normal)</li>
+  </ul>
+  <div class="note"><strong>Совет.</strong> Уменьшай Density и Length для мелких царапин, увеличивай Clusters для концентрированных групп.</div>
+</section>
+
+<section id="spots-ru">
+  <h2>6. Spots</h2>
+  <p>Пятна через маски. Маска может быть <strong>своя</strong> (один PNG) или <strong>из библиотеки</strong> (набор масок из папки AppData).</p>
+  <figure>
+    <img src="screenshots/dirt_params.jpg" alt="Пресет Spots">
+    <figcaption>Рис. 6 — Пресет Spots: кнопки «Add user mask» и «Library», параметры пятен.</figcaption>
+  </figure>
+  <h3>Параметры пятен</h3>
+  <ul>
+    <li><strong>Position</strong> — раскрывающаяся секция: Position X/Y, Rotation, Random rotation</li>
+    <li><strong>Count</strong> — количество пятен (1–8)</li>
+    <li><strong>Scale</strong> — размер пятен</li>
+    <li><strong>Deform</strong> — искажение формы пятна (рваные края)</li>
+    <li><strong>Threshold</strong> — порог (какая часть маски становится пятном)</li>
+    <li><strong>Sharpness</strong> — резкость краёв</li>
+    <li><strong>Color</strong> — цвет пятна</li>
+    <li><strong>Thickness</strong> — влияние на карту normal (объём)</li>
+    <li><strong>Rim highlight</strong> — светлая кромка</li>
+    <li><strong>Normal enabled</strong> — влиять на карту normal</li>
+  </ul>
+
+  <h3>Своя маска</h3>
+  <figure>
+    <img src="screenshots/user_mask_position.jpg" alt="Своя маска + Position">
+    <figcaption>Рис. 7 — Своя маска + раскрытая секция Position.</figcaption>
+  </figure>
+  <p>Кнопка <strong>+ Add user mask</strong> → выбери PNG. Своя маска <strong>перебивает</strong> библиотеку — если она загружена, галочки из библиотеки игнорируются.</p>
+  <p>После загрузки появляется кнопка <strong>Position</strong>. Внутри:</p>
+  <ul>
+    <li><strong>Position X / Y</strong> — сдвиг пятна по UV (-1..1)</li>
+    <li><strong>Rotation</strong> — поворот (0..360°)</li>
+    <li><strong>Scale</strong> — размер (0.05..5.0, точная регулировка)</li>
+    <li><strong>Reset</strong> — сбросить всё в дефолт</li>
+  </ul>
+  <div class="note"><strong>Совет.</strong> Пока ты в исходнике (вариация 0) — Position работает как превью. Нажми Generate — вариация 1 запомнит точную позицию, вариации 2..N сгенерятся случайно с тем же Count и Scale.</div>
+
+  <h3>Библиотека масок</h3>
+  <p>Кнопка <strong>Library</strong> → модалка со списком масок из <code>%APPDATA%/WearCraft/masks/spots/</code>. Отметь галочками нужные.</p>
+  <ul>
+    <li><strong>Select all</strong> — отметить все</li>
+    <li><strong>Clear</strong> — снять все галочки</li>
+    <li><strong>Open folder</strong> — открыть папку масок в проводнике (можно кидать свои PNG)</li>
+  </ul>
+  <div class="note"><strong>Важно.</strong> Пустой список галочек = ничего не применяется. Это сделано специально, чтобы случайно не применить все маски.</div>
+
+  <h3>Position (для библиотеки)</h3>
+  <p>Когда галочки из библиотеки активны (а своя маска не загружена) — есть кнопка <strong>Position</strong> над заголовком настроек Spots. Внутри:</p>
+  <ul>
+    <li><strong>Position X / Y</strong> — глобальный сдвиг всех пятен</li>
+    <li><strong>Rotation</strong> — глобальный поворот</li>
+    <li><strong>Random rotation</strong> — если включён, каждое пятно крутится ещё и случайно</li>
+  </ul>
+</section>
+
+<section id="rust-ru">
+  <h2>7. Rust</h2>
+  <p>Ржавчина работает через маски — по той же схеме, что Spots. Отличия:</p>
+  <ul>
+    <li>Вместо <strong>Thickness</strong> — <strong>Volume</strong> (объём ржавчины, может быть отрицательным)</li>
+    <li>Вместо <strong>Color</strong> — три фиксированных цвета: ядро (тёмно-коричневый), тело (коричневый), край (светло-оранжевый)</li>
+  </ul>
+  <p>Все остальные параметры (Count, Scale, Deform, Threshold, Sharpness, Position, Random rotation, Rim highlight, Normal enabled) — идентичны Spots.</p>
+  <p>Маски для Rust хранятся в <code>%APPDATA%/WearCraft/masks/rust/</code> — отдельно от Spots.</p>
+</section>
+
+<section id="masks-ru">
+  <h2>8. Маски</h2>
+  <h3>Формат</h3>
+  <p>Маска — PNG или JPG. Читается два канала: RGB-яркость и альфа. Приложение само определяет, какой канал использовать:</p>
+  <ul>
+    <li>Если alpha сильно варьируется — берётся альфа</li>
+    <li>Иначе — RGB-яркость (усреднённая)</li>
+  </ul>
+  <p>Результат всегда приводится к чёрно-белой карте: белое = пятно, чёрное = фон.</p>
+
+  <h3>Хранение</h3>
+  <p>Все маски лежат в <code>%APPDATA%/WearCraft/masks/</code>:</p>
+  <ul>
+    <li><code>spots/</code> — для пресета Spots</li>
+    <li><code>rust/</code> — для пресета Rust</li>
+  </ul>
+  <p>При первом запуске встроенные маски копируются из ресурсов приложения в эту папку. Дальше можно кидать свои — они появятся в библиотеке.</p>
+
+  <h3>Своя маска vs библиотека</h3>
+  <ul>
+    <li><strong>Своя маска</strong> (Add user mask) — одна, приоритетная, перебивает всё</li>
+    <li><strong>Библиотека</strong> (галочки) — берётся только отмеченное. Пусто = ничего</li>
+    <li>Своя маска не использует тайлинг — пятно не размножается при уменьшении Scale</li>
+    <li>Библиотека использует тайлинг — пятна оборачиваются по краям текстуры</li>
+  </ul>
+</section>
+
+<section id="custom-ru">
+  <h2>9. Custom Mask</h2>
+  <p>Секция <strong>Mask</strong> в самом верху панели параметров. Работает только с пресетом <strong>Custom</strong>.</p>
+  <p>Накладывает одну маску прямо на albedo/roughness/normal, без процедурной генерации пятен. Параметры:</p>
+  <ul>
+    <li><strong>Position X / Y</strong> — сдвиг маски</li>
+    <li><strong>Scale</strong> — размер (0.1..5.0)</li>
+    <li><strong>Rotation</strong> — поворот (0..360°)</li>
+    <li><strong>Opacity</strong> — прозрачность наложения</li>
+    <li><strong>Color</strong> — цвет (только для mono-маски)</li>
+    <li><strong>Affect albedo / roughness / normal</strong> — какие карты затронуть</li>
+  </ul>
+  <p>Хоткей для загрузки — <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>O</kbd>.</p>
+  <div class="note"><strong>Совет.</strong> Custom — самый простой способ наложить логотип или декаль на albedo.</div>
+</section>
+
+<section id="params-ru">
+  <h2>10. Параметры и вариации</h2>
+  <ul>
+    <li><strong>Variations</strong> — сколько вариаций сгенерировать (5–50)</li>
+    <li><strong>Amount</strong> — сила износа (0–100%). Влияет на все пресеты, кроме Rust — там Amount фиксирован</li>
+    <li><strong>Seed</strong> — зерно генератора. Одинаковый seed + одинаковые настройки = одинаковый результат. Кнопка с кубиком — случайный seed</li>
+  </ul>
+  <p>Каждая вариация использует seed = <code>params.seed + i * 7919</code>, где i — номер вариации (1..N). Это гарантирует, что все вариации разные, но при том же seed результат воспроизводим.</p>
+</section>
+
+<section id="tiling-ru">
+  <h2>11. Тайлинг и превью</h2>
+  <h3>Панель Tiling</h3>
+  <p>Кнопка <strong>Tiling</strong> в левом верхнем углу превью:</p>
+  <ul>
+    <li><strong>Repeat X / Y</strong> — сколько раз текстура повторяется по каждой оси (0.1..10)</li>
+    <li><strong>Rotation</strong> — поворот UV (-180°..180°)</li>
+    <li><strong>Reset</strong> — вернуть Repeat X/Y = 1, Rotation = 0</li>
+  </ul>
+  <div class="note"><strong>Совет.</strong> Тайлинг в превью нужен только для оценки, как текстура ведёт себя на большой площади. В финале PBR-карты сохраняются один раз.</div>
+
+  <h3>Навигация по вариациям</h3>
+  <p>Внизу превью — стрелки <kbd>◀</kbd> <kbd>▶</kbd> и счётчик. <strong>Исходник</strong> — вариация 0, превью с шейдером. <strong>1/5</strong> — запечённые вариации.</p>
+  <p>Пока вариация 0 — вьюер показывает шейдерный preview (для Spots и Rust). Пока вариация 1..N — показывает реальный PNG из <code>wear_NN/</code>.</p>
+
+  <h3>Рендер-качество</h3>
+  <p>Превью рендерится с анизотропией 16x, SSAA ×2, AgX tone mapping. Сфера — 96×96 сегментов, тени PCF.</p>
+</section>
+
+<section id="save-ru">
+  <h2>12. Сохранение и экспорт</h2>
+  <p>Кнопка <strong>Сохранить</strong> или <kbd>Ctrl</kbd>+<kbd>S</kbd>. Секции:</p>
+  <ul>
+    <li><strong>PNG</strong> — сохранить текущий PBR-сет как PNG</li>
+    <li><strong>ZIP</strong> — упаковать все вариации в архив</li>
+    <li><strong>OBJ</strong> — экспорт геометрии модели (если загружена)</li>
+    <li><strong>Engines</strong> — экспорт под игровые движки</li>
+  </ul>
+
+  <h3>Unreal Engine</h3>
+  <p>Упаковка ORM: <code>R = AO, G = Roughness, B = Metalness</code>. Normal-карта конвертируется в DirectX (Y-флип зелёного канала). Сохраняется в подпапку <code>unreal/</code> + README.txt с описанием.</p>
+
+  <h3>Unity</h3>
+  <p>MetallicSmoothness: <code>R = Metal, G = AO, B = 0, A = Smoothness (1 − Roughness)</code>. Радио <strong>Built-in / URP</strong> — для URP сохраняется AO отдельной картой. Normal-карта Y-flip. Сохраняется в <code>unity/</code> + README.txt.</p>
+
+  <div class="note"><strong>Совет.</strong> Перед билдом в движок перепроверь галочки <strong>Normal enabled</strong> — если карта normal не менялась, флип не нужен.</div>
+</section>
+
+<section id="hotkeys-ru">
+  <h2>13. Хоткеи</h2>
+  <table>
+    <tr><th>Клавиша</th><th>Действие</th></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>O</kbd></td><td>Загрузить PBR-карты</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>O</kbd></td><td>Загрузить кастомную маску (Custom preset)</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>G</kbd></td><td>Генерировать вариации</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>S</kbd></td><td>Сохранить</td></tr>
+    <tr><td><kbd>Esc</kbd></td><td>Закрыть активную модалку</td></tr>
+  </table>
+</section>
+
+<section id="settings-ru">
+  <h2>14. Info и настройки</h2>
+
+  <h3>Info</h3>
+  <p>Кнопка <strong>Info</strong> в хедере. Внутри — Help, About, Support, Manual.</p>
+
+  <h3>Settings</h3>
+  <ul>
+    <li><strong>Preview Resolution</strong> — разрешение запечённых карт (1024 / 2048 / 4096)</li>
+    <li><strong>Save Mode</strong> — <em>ask</em> (спрашивать путь каждый раз) или <em>always</em> (сохранять в фиксированную папку)</li>
+    <li><strong>Save Dir</strong> — папка для режима always</li>
+    <li><strong>Open masks folder</strong> — открыть <code>%APPDATA%/WearCraft/masks/</code> в проводнике</li>
+  </ul>
+
+  <h3>Лог</h3>
+  <p>Внизу окна — панель лога. Свёрнутая показывает последнюю строку, клик по хедеру разворачивает. Лог полезен при отладке: видно все сообщения от Rust и от JS.</p>
+</section>
+
+<section id="license-ru">
+  <h2>15. Лицензия</h2>
+  <p>WearCraft распространяется под <strong>MIT License</strong> — свободно для использования, в том числе в коммерческих проектах.</p>
+  <p style="margin-top: 32px;">Сделано <strong>INV.LVL</strong> · 2026</p>
+</section>
+
+<footer>
+  WearCraft v1.0.0 · MIT · INV.LVL · 2026
+  <br><br>
+  <a href="#top-ru" class="back">↑ Наверх</a>
+</footer>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!--                       ENGLISH                         -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="container" id="content-en" style="display:none;">
+
+<header id="top-en">
+  <h1>WearCraft <span class="ver">v1.0.0</span></h1>
+  <p class="sub">Procedural wear generator for PBR textures — User Manual</p>
+</header>
+
+<nav class="toc">
+  <h2>Contents</h2>
+  <ol>
+    <li><a href="#intro-en">Introduction</a></li>
+    <li><a href="#ui-en">Interface</a></li>
+    <li><a href="#pbr-en">Loading PBR</a></li>
+    <li><a href="#presets-en">Presets</a></li>
+    <li><a href="#scratches-en">Scratches</a></li>
+    <li><a href="#spots-en">Spots</a></li>
+    <li><a href="#rust-en">Rust</a></li>
+    <li><a href="#masks-en">Masks</a></li>
+    <li><a href="#custom-en">Custom Mask</a></li>
+    <li><a href="#params-en">Parameters &amp; Variations</a></li>
+    <li><a href="#tiling-en">Tiling &amp; Preview</a></li>
+    <li><a href="#save-en">Saving &amp; Engine Export</a></li>
+    <li><a href="#hotkeys-en">Hotkeys</a></li>
+    <li><a href="#settings-en">Info &amp; Settings</a></li>
+    <li><a href="#license-en">License</a></li>
+  </ol>
+</nav>
+
+<section id="intro-en">
+  <h2>1. Introduction</h2>
+  <p><strong>WearCraft</strong> is a desktop app for procedural wear generation of PBR textures. It takes a ready PBR set (albedo, normal, roughness, ao, height, metalness, edge) and generates N unique wear variations: scratches, spots, rust, custom masks.</p>
+  <p>The built-in 3D viewer shows the result in real time. The preview fully matches the baked result — what you see is what you get.</p>
+  <p><strong>For:</strong> 3D artists, game devs, anyone working with PBR.</p>
+  <p style="color: var(--fg3); font-size: 13px; margin-top: 20px;">💡 <strong>Tip:</strong> click any screenshot to view it fullscreen. Esc or click the background — close.</p>
+</section>
+
+<section id="ui-en">
+  <h2>2. Interface</h2>
+  <p>The window is split into three parts: <strong>toolbar</strong> on the left, <strong>3D preview</strong> in the center, <strong>parameters panel</strong> on the right.</p>
+  <figure>
+    <img src="screenshots/main_ui.jpg" alt="WearCraft main window">
+    <figcaption>Fig. 1 — Main window: toolbar, 3D preview, parameters panel.</figcaption>
+  </figure>
+  <figure>
+    <img src="screenshots/model_loaded.jpg" alt="3D model loaded">
+    <figcaption>Fig. 2 — Custom 3D model loaded into the preview.</figcaption>
+  </figure>
+  <p><strong>Left toolbar:</strong></p>
+  <ul>
+    <li><strong>Load 3D</strong> — open a 3D model (.obj / .gltf)</li>
+    <li><strong>Load PBR</strong> — open PBR maps</li>
+    <li><strong>Generate</strong> — run variation generation</li>
+    <li><strong>Save</strong> — export result</li>
+    <li><strong>Reset PBR</strong> — clear loaded maps</li>
+    <li><strong>Settings</strong> — app options</li>
+  </ul>
+  <p>At the bottom — the <strong>log panel</strong>: collapsed shows the last line, clicking the header expands the history.</p>
+</section>
+
+<section id="pbr-en">
+  <h2>3. Loading PBR</h2>
+  <p>Three ways to load PBR maps:</p>
+  <ol>
+    <li><strong>Load PBR</strong> button on the left toolbar</li>
+    <li>Hotkey <kbd>Ctrl</kbd>+<kbd>O</kbd></li>
+    <li>Drag &amp; drop files or a folder directly onto the preview</li>
+  </ol>
+  <p>The app auto-detects maps by filename:</p>
+  <ul>
+    <li><code>*_albedo.png</code> / <code>*_basecolor.png</code> / <code>*_diffuse.png</code></li>
+    <li><code>*_normal.png</code> / <code>*_nrm.png</code></li>
+    <li><code>*_roughness.png</code> / <code>*_rough.png</code></li>
+    <li><code>*_ao.png</code> / <code>*_occlusion.png</code></li>
+    <li><code>*_height.png</code> / <code>*_displacement.png</code></li>
+    <li><code>*_metalness.png</code> / <code>*_metallic.png</code></li>
+    <li><code>*_edge.png</code> (optional — edge map from previous passes)</li>
+  </ul>
+  <figure>
+    <img src="screenshots/pbr_loading.jpg" alt="PBR maps loaded">
+    <figcaption>Fig. 3 — PBR maps loaded. Checkboxes show which maps participate in generation.</figcaption>
+  </figure>
+  <div class="note"><strong>Tip.</strong> Uncheck maps you don't want to touch — they will stay unchanged in the result.</div>
+</section>
+
+<section id="presets-en">
+  <h2>4. Presets</h2>
+  <p>WearCraft has four presets. Switch via the <strong>Preset</strong> dropdown on the right panel.</p>
+  <figure>
+    <img src="screenshots/presets.jpg" alt="Preset list">
+    <figcaption>Fig. 4 — Preset list: Custom, Scratches, Spots, Rust.</figcaption>
+  </figure>
+  <ul>
+    <li><strong>Custom</strong> — applies a single mask over the PBR set. Works only with albedo/roughness/normal.</li>
+    <li><strong>Scratches</strong> — procedural Bezier scratches. Generated mathematically, no masks.</li>
+    <li><strong>Spots</strong> — spots via masks (own or library).</li>
+    <li><strong>Rust</strong> — rust via masks. Similar to Spots, but with a different color set and a Volume parameter.</li>
+  </ul>
+</section>
+
+<section id="scratches-en">
+  <h2>5. Scratches</h2>
+  <p>Procedural scratches — drawn by Bezier, no masks. Parameters:</p>
+  <figure>
+    <img src="screenshots/scratches_params.jpg" alt="Scratches preset">
+    <figcaption>Fig. 5 — Scratches preset with all parameters.</figcaption>
+  </figure>
+  <ul>
+    <li><strong>Density</strong> — number of scratches</li>
+    <li><strong>Length</strong> — average length</li>
+    <li><strong>Thickness</strong> — thickness in pixels</li>
+    <li><strong>Waviness</strong> — curvature</li>
+    <li><strong>Branches</strong> — branch probability</li>
+    <li><strong>Clusters</strong> — grouping scratches into clusters</li>
+    <li><strong>Realistic</strong> — realistic thickness variation and breaks</li>
+    <li><strong>Rim highlight</strong> — light rim around scratches</li>
+    <li><strong>Normal enabled</strong> — affect the normal map</li>
+    <li><strong>Depth</strong> — depth (strength of normal influence)</li>
+  </ul>
+  <div class="note"><strong>Tip.</strong> Lower Density and Length for fine scratches, increase Clusters for concentrated groups.</div>
+</section>
+
+<section id="spots-en">
+  <h2>6. Spots</h2>
+  <p>Spots via masks. The mask can be <strong>your own</strong> (a single PNG) or <strong>from the library</strong> (a set of masks from the AppData folder).</p>
+  <figure>
+    <img src="screenshots/dirt_params.jpg" alt="Spots preset">
+    <figcaption>Fig. 6 — Spots preset: "Add user mask" and "Library" buttons, spot parameters.</figcaption>
+  </figure>
+  <h3>Spot parameters</h3>
+  <ul>
+    <li><strong>Position</strong> — expandable section: Position X/Y, Rotation, Random rotation</li>
+    <li><strong>Count</strong> — number of spots (1–8)</li>
+    <li><strong>Scale</strong> — spot size</li>
+    <li><strong>Deform</strong> — shape distortion (torn edges)</li>
+    <li><strong>Threshold</strong> — threshold (what part of the mask becomes a spot)</li>
+    <li><strong>Sharpness</strong> — edge sharpness</li>
+    <li><strong>Color</strong> — spot color</li>
+    <li><strong>Thickness</strong> — normal map influence (volume)</li>
+    <li><strong>Rim highlight</strong> — light rim</li>
+    <li><strong>Normal enabled</strong> — affect the normal map</li>
+  </ul>
+
+  <h3>Own mask</h3>
+  <figure>
+    <img src="screenshots/user_mask_position.jpg" alt="Own mask + Position">
+    <figcaption>Fig. 7 — Own mask + expanded Position section.</figcaption>
+  </figure>
+  <p>Click <strong>+ Add user mask</strong> → pick a PNG. Own mask <strong>overrides</strong> the library — if loaded, library checkboxes are ignored.</p>
+  <p>Once loaded, the <strong>Position</strong> button appears. Inside:</p>
+  <ul>
+    <li><strong>Position X / Y</strong> — spot offset in UV (-1..1)</li>
+    <li><strong>Rotation</strong> — rotation (0..360°)</li>
+    <li><strong>Scale</strong> — size (0.05..5.0, fine control)</li>
+    <li><strong>Reset</strong> — reset all to default</li>
+  </ul>
+  <div class="note"><strong>Tip.</strong> While you're on the source (variation 0) — Position acts as preview. Click Generate — variation 1 remembers the exact position, variations 2..N generate randomly with the same Count and Scale.</div>
+
+  <h3>Masks library</h3>
+  <p>Click <strong>Library</strong> → a modal with masks from <code>%APPDATA%/WearCraft/masks/spots/</code>. Check the ones you want.</p>
+  <ul>
+    <li><strong>Select all</strong> — check all</li>
+    <li><strong>Clear</strong> — uncheck all</li>
+    <li><strong>Open folder</strong> — open the masks folder in Explorer (drop your own PNGs)</li>
+  </ul>
+  <div class="note"><strong>Important.</strong> An empty checkbox list = nothing is applied. This is intentional to prevent accidentally applying all masks.</div>
+
+  <h3>Position (for library)</h3>
+  <p>When library masks are active (and no own mask is loaded) — there's a <strong>Position</strong> button above the Spots header. Inside:</p>
+  <ul>
+    <li><strong>Position X / Y</strong> — global offset for all spots</li>
+    <li><strong>Rotation</strong> — global rotation</li>
+    <li><strong>Random rotation</strong> — if on, each spot also rotates randomly</li>
+  </ul>
+</section>
+
+<section id="rust-en">
+  <h2>7. Rust</h2>
+  <p>Rust works via masks — same scheme as Spots. Differences:</p>
+  <ul>
+    <li>Instead of <strong>Thickness</strong> — <strong>Volume</strong> (rust volume, can be negative)</li>
+    <li>Instead of <strong>Color</strong> — three fixed colors: core (dark brown), body (brown), edge (light orange)</li>
+  </ul>
+  <p>All other parameters (Count, Scale, Deform, Threshold, Sharpness, Position, Random rotation, Rim highlight, Normal enabled) are identical to Spots.</p>
+  <p>Rust masks are stored in <code>%APPDATA%/WearCraft/masks/rust/</code> — separate from Spots.</p>
+</section>
+
+<section id="masks-en">
+  <h2>8. Masks</h2>
+  <h3>Format</h3>
+  <p>A mask is a PNG or JPG. Two channels are read: RGB luminance and alpha. The app auto-detects which one to use:</p>
+  <ul>
+    <li>If alpha varies a lot — alpha is used</li>
+    <li>Otherwise — RGB luminance (averaged)</li>
+  </ul>
+  <p>The result is always reduced to a black-and-white map: white = spot, black = background.</p>
+
+  <h3>Storage</h3>
+  <p>All masks live in <code>%APPDATA%/WearCraft/masks/</code>:</p>
+  <ul>
+    <li><code>spots/</code> — for the Spots preset</li>
+    <li><code>rust/</code> — for the Rust preset</li>
+  </ul>
+  <p>On first run, built-in masks are copied from app resources into this folder. After that you can drop your own — they'll appear in the library.</p>
+
+  <h3>Own mask vs library</h3>
+  <ul>
+    <li><strong>Own mask</strong> (Add user mask) — a single, priority mask that overrides everything</li>
+    <li><strong>Library</strong> (checkboxes) — only what's checked. Empty = nothing</li>
+    <li>Own mask doesn't use tiling — the spot doesn't multiply when Scale decreases</li>
+    <li>Library uses tiling — spots wrap at texture edges</li>
+  </ul>
+</section>
+
+<section id="custom-en">
+  <h2>9. Custom Mask</h2>
+  <p>The <strong>Mask</strong> section at the very top of the parameters panel. Works only with the <strong>Custom</strong> preset.</p>
+  <p>Overlays a single mask directly onto albedo/roughness/normal, without procedural spot generation. Parameters:</p>
+  <ul>
+    <li><strong>Position X / Y</strong> — mask offset</li>
+    <li><strong>Scale</strong> — size (0.1..5.0)</li>
+    <li><strong>Rotation</strong> — rotation (0..360°)</li>
+    <li><strong>Opacity</strong> — overlay transparency</li>
+    <li><strong>Color</strong> — color (mono masks only)</li>
+    <li><strong>Affect albedo / roughness / normal</strong> — which maps to affect</li>
+  </ul>
+  <p>Hotkey for loading — <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>O</kbd>.</p>
+  <div class="note"><strong>Tip.</strong> Custom is the easiest way to overlay a logo or decal on albedo.</div>
+</section>
+
+<section id="params-en">
+  <h2>10. Parameters &amp; Variations</h2>
+  <ul>
+    <li><strong>Variations</strong> — how many variations to generate (5–50)</li>
+    <li><strong>Amount</strong> — wear strength (0–100%). Affects all presets except Rust — there Amount is fixed</li>
+    <li><strong>Seed</strong> — generator seed. Same seed + same settings = same result. Dice button — random seed</li>
+  </ul>
+  <p>Each variation uses seed = <code>params.seed + i * 7919</code>, where i is the variation index (1..N). This guarantees all variations differ, yet the result is reproducible with the same seed.</p>
+</section>
+
+<section id="tiling-en">
+  <h2>11. Tiling &amp; Preview</h2>
+  <h3>Tiling panel</h3>
+  <p>The <strong>Tiling</strong> button in the top-left corner of the preview:</p>
+  <ul>
+    <li><strong>Repeat X / Y</strong> — how many times the texture repeats per axis (0.1..10)</li>
+    <li><strong>Rotation</strong> — UV rotation (-180°..180°)</li>
+    <li><strong>Reset</strong> — restore Repeat X/Y = 1, Rotation = 0</li>
+  </ul>
+  <div class="note"><strong>Tip.</strong> Tiling in preview is only for evaluating how the texture behaves over a large area. In the result, PBR maps are saved once.</div>
+
+  <h3>Variation navigation</h3>
+  <p>At the bottom of the preview — arrows <kbd>◀</kbd> <kbd>▶</kbd> and a counter. <strong>Source</strong> — variation 0, shader preview. <strong>1/5</strong> — baked variations.</p>
+  <p>While on variation 0 — the viewer shows the shader preview (for Spots and Rust). While on variation 1..N — shows the actual PNG from <code>wear_NN/</code>.</p>
+
+  <h3>Render quality</h3>
+  <p>Preview renders with 16x anisotropy, SSAA ×2, AgX tone mapping. Sphere — 96×96 segments, PCF shadows.</p>
+</section>
+
+<section id="save-en">
+  <h2>12. Saving &amp; Engine Export</h2>
+  <p>Click <strong>Save</strong> or <kbd>Ctrl</kbd>+<kbd>S</kbd>. Sections:</p>
+  <ul>
+    <li><strong>PNG</strong> — save the current PBR set as PNG</li>
+    <li><strong>ZIP</strong> — pack all variations into an archive</li>
+    <li><strong>OBJ</strong> — export model geometry (if loaded)</li>
+    <li><strong>Engines</strong> — export for game engines</li>
+  </ul>
+
+  <h3>Unreal Engine</h3>
+  <p>ORM packing: <code>R = AO, G = Roughness, B = Metalness</code>. Normal map is converted to DirectX (Y-flip of green channel). Saved to <code>unreal/</code> subfolder + README.txt.</p>
+
+  <h3>Unity</h3>
+  <p>MetallicSmoothness: <code>R = Metal, G = AO, B = 0, A = Smoothness (1 − Roughness)</code>. Radio <strong>Built-in / URP</strong> — for URP, AO is saved as a separate map. Normal map Y-flip. Saved to <code>unity/</code> + README.txt.</p>
+
+  <div class="note"><strong>Tip.</strong> Before building into an engine, double-check the <strong>Normal enabled</strong> checkboxes — if the normal map wasn't changed, no flip is needed.</div>
+</section>
+
+<section id="hotkeys-en">
+  <h2>13. Hotkeys</h2>
+  <table>
+    <tr><th>Key</th><th>Action</th></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>O</kbd></td><td>Load PBR maps</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>O</kbd></td><td>Load custom mask (Custom preset)</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>G</kbd></td><td>Generate variations</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>S</kbd></td><td>Save</td></tr>
+    <tr><td><kbd>Esc</kbd></td><td>Close active modal</td></tr>
+  </table>
+</section>
+
+<section id="settings-en">
+  <h2>14. Info &amp; Settings</h2>
+
+  <h3>Info</h3>
+  <p>The <strong>Info</strong> button in the header. Contains Help, About, Support, Manual.</p>
+
+  <h3>Settings</h3>
+  <ul>
+    <li><strong>Preview Resolution</strong> — baked map resolution (1024 / 2048 / 4096)</li>
+    <li><strong>Save Mode</strong> — <em>ask</em> (ask path every time) or <em>always</em> (save to a fixed folder)</li>
+    <li><strong>Save Dir</strong> — folder for always mode</li>
+    <li><strong>Open masks folder</strong> — open <code>%APPDATA%/WearCraft/masks/</code> in Explorer</li>
+  </ul>
+
+  <h3>Log</h3>
+  <p>At the bottom — the log panel. Collapsed shows the last line, clicking the header expands. The log is useful for debugging: you see all messages from Rust and JS.</p>
+</section>
+
+<section id="license-en">
+  <h2>15. License</h2>
+  <p>WearCraft is released under the <strong>MIT License</strong> — free to use, including in commercial projects.</p>
+  <p style="margin-top: 32px;">Made by <strong>INV.LVL</strong> · 2026</p>
+</section>
+
+<footer>
+  WearCraft v1.0.0 · MIT · INV.LVL · 2026
+  <br><br>
+  <a href="#top-en" class="back">↑ Back to top</a>
+</footer>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!--                       中文 (简体)                       -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="container" id="content-zh" style="display:none;">
+
+<header id="top-zh">
+  <h1>WearCraft <span class="ver">v1.0.0</span></h1>
+  <p class="sub">PBR 纹理程序化磨损生成器 — 用户手册</p>
+</header>
+
+<nav class="toc">
+  <h2>目录</h2>
+  <ol>
+    <li><a href="#intro-zh">简介</a></li>
+    <li><a href="#ui-zh">界面</a></li>
+    <li><a href="#pbr-zh">加载 PBR</a></li>
+    <li><a href="#presets-zh">预设</a></li>
+    <li><a href="#scratches-zh">刮痕</a></li>
+    <li><a href="#spots-zh">斑点</a></li>
+    <li><a href="#rust-zh">锈迹</a></li>
+    <li><a href="#masks-zh">遮罩</a></li>
+    <li><a href="#custom-zh">自定义遮罩</a></li>
+    <li><a href="#params-zh">参数与变体</a></li>
+    <li><a href="#tiling-zh">平铺与预览</a></li>
+    <li><a href="#save-zh">保存与引擎导出</a></li>
+    <li><a href="#hotkeys-zh">快捷键</a></li>
+    <li><a href="#settings-zh">信息与设置</a></li>
+    <li><a href="#license-zh">许可</a></li>
+  </ol>
+</nav>
+
+<section id="intro-zh">
+  <h2>1. 简介</h2>
+  <p><strong>WearCraft</strong> 是一款用于 PBR 纹理程序化磨损生成的桌面应用。它接收现成的 PBR 纹理集（albedo、normal、roughness、ao、height、metalness、edge），并生成 N 个独特的磨损变体：刮痕、斑点、锈迹、自定义遮罩。</p>
+  <p>内置 3D 查看器实时显示结果。预览与烘焙结果完全一致 — 所见即所得。</p>
+  <p><strong>适用人群：</strong>3D 艺术家、游戏开发、所有使用 PBR 的用户。</p>
+  <p style="color: var(--fg3); font-size: 13px; margin-top: 20px;">💡 <strong>提示：</strong>点击任意截图可全屏查看。按 Esc 或点击背景关闭。</p>
+</section>
+
+<section id="ui-zh">
+  <h2>2. 界面</h2>
+  <p>窗口分为三部分：左侧<strong>工具栏</strong>、中间<strong>3D 预览</strong>、右侧<strong>参数面板</strong>。</p>
+  <figure>
+    <img src="screenshots/main_ui.jpg" alt="WearCraft 主窗口">
+    <figcaption>图 1 — 主窗口：工具栏、3D 预览、参数面板。</figcaption>
+  </figure>
+  <figure>
+    <img src="screenshots/model_loaded.jpg" alt="已加载 3D 模型">
+    <figcaption>图 2 — 已加载到预览中的自定义 3D 模型。</figcaption>
+  </figure>
+  <p><strong>左侧工具栏：</strong></p>
+  <ul>
+    <li><strong>加载 3D</strong> — 打开 3D 模型（.obj / .gltf）</li>
+    <li><strong>加载 PBR</strong> — 打开 PBR 贴图</li>
+    <li><strong>生成</strong> — 运行变体生成</li>
+    <li><strong>保存</strong> — 导出结果</li>
+    <li><strong>重置 PBR</strong> — 清除已加载的贴图</li>
+    <li><strong>设置</strong> — 应用选项</li>
+  </ul>
+  <p>底部是<strong>日志面板</strong>：折叠时显示最后一行，点击标题栏展开历史记录。</p>
+</section>
+
+<section id="pbr-zh">
+  <h2>3. 加载 PBR</h2>
+  <p>三种加载 PBR 贴图的方式：</p>
+  <ol>
+    <li>左侧工具栏的 <strong>加载 PBR</strong> 按钮</li>
+    <li>快捷键 <kbd>Ctrl</kbd>+<kbd>O</kbd></li>
+    <li>将文件或文件夹直接拖放到预览区</li>
+  </ol>
+  <p>应用根据文件名自动识别贴图：</p>
+  <ul>
+    <li><code>*_albedo.png</code> / <code>*_basecolor.png</code> / <code>*_diffuse.png</code></li>
+    <li><code>*_normal.png</code> / <code>*_nrm.png</code></li>
+    <li><code>*_roughness.png</code> / <code>*_rough.png</code></li>
+    <li><code>*_ao.png</code> / <code>*_occlusion.png</code></li>
+    <li><code>*_height.png</code> / <code>*_displacement.png</code></li>
+    <li><code>*_metalness.png</code> / <code>*_metallic.png</code></li>
+    <li><code>*_edge.png</code>（可选 — 来自之前流程的边缘贴图）</li>
+  </ul>
+  <figure>
+    <img src="screenshots/pbr_loading.jpg" alt="PBR 贴图已加载">
+    <figcaption>图 3 — PBR 贴图已加载。复选框显示哪些贴图参与生成。</figcaption>
+  </figure>
+  <div class="note"><strong>提示。</strong>取消勾选你不想改动的贴图 — 它们在结果中将保持不变。</div>
+</section>
+
+<section id="presets-zh">
+  <h2>4. 预设</h2>
+  <p>WearCraft 有四个预设。通过右侧面板的 <strong>预设</strong> 下拉菜单切换。</p>
+  <figure>
+    <img src="screenshots/presets.jpg" alt="预设列表">
+    <figcaption>图 4 — 预设列表：自定义、刮痕、斑点、锈迹。</figcaption>
+  </figure>
+  <ul>
+    <li><strong>自定义</strong> — 在 PBR 集上叠加单一遮罩。仅作用于 albedo/roughness/normal。</li>
+    <li><strong>刮痕</strong> — 程序化贝塞尔刮痕。通过数学方法生成，不使用遮罩。</li>
+    <li><strong>斑点</strong> — 通过遮罩生成斑点（自带或库中）。</li>
+    <li><strong>锈迹</strong> — 通过遮罩生成锈迹。与斑点类似，但颜色集不同，并带有 Volume 参数。</li>
+  </ul>
+</section>
+
+<section id="scratches-zh">
+  <h2>5. 刮痕</h2>
+  <p>程序化刮痕 — 由贝塞尔曲线绘制，不使用遮罩。参数：</p>
+  <figure>
+    <img src="screenshots/scratches_params.jpg" alt="刮痕预设">
+    <figcaption>图 5 — 刮痕预设及其所有参数。</figcaption>
+  </figure>
+  <ul>
+    <li><strong>Density</strong> — 刮痕数量</li>
+    <li><strong>Length</strong> — 平均长度</li>
+    <li><strong>Thickness</strong> — 像素厚度</li>
+    <li><strong>Waviness</strong> — 弯曲程度</li>
+    <li><strong>Branches</strong> — 分支概率</li>
+    <li><strong>Clusters</strong> — 将刮痕聚集成簇</li>
+    <li><strong>Realistic</strong> — 真实的厚度变化与断裂</li>
+    <li><strong>Rim highlight</strong> — 刮痕周围的亮边</li>
+    <li><strong>Normal enabled</strong> — 影响 normal 贴图</li>
+    <li><strong>Depth</strong> — 深度（对 normal 影响强度）</li>
+  </ul>
+  <div class="note"><strong>提示。</strong>细刮痕请降低 Density 和 Length；集中成组请增加 Clusters。</div>
+</section>
+
+<section id="spots-zh">
+  <h2>6. 斑点</h2>
+  <p>通过遮罩生成斑点。遮罩可以是<strong>自己的</strong>（单个 PNG）或<strong>来自库</strong>（AppData 文件夹中的遮罩集）。</p>
+  <figure>
+    <img src="screenshots/dirt_params.jpg" alt="斑点预设">
+    <figcaption>图 6 — 斑点预设："Add user mask" 和 "Library" 按钮，斑点参数。</figcaption>
+  </figure>
+  <h3>斑点参数</h3>
+  <ul>
+    <li><strong>Position</strong> — 可展开区域：Position X/Y、Rotation、Random rotation</li>
+    <li><strong>Count</strong> — 斑点数量（1–8）</li>
+    <li><strong>Scale</strong> — 斑点大小</li>
+    <li><strong>Deform</strong> — 形状畸变（边缘撕裂）</li>
+    <li><strong>Threshold</strong> — 阈值（遮罩的哪一部分变为斑点）</li>
+    <li><strong>Sharpness</strong> — 边缘锐度</li>
+    <li><strong>Color</strong> — 斑点颜色</li>
+    <li><strong>Thickness</strong> — normal 贴图影响（体积）</li>
+    <li><strong>Rim highlight</strong> — 亮边</li>
+    <li><strong>Normal enabled</strong> — 影响 normal 贴图</li>
+  </ul>
+
+  <h3>自有遮罩</h3>
+  <figure>
+    <img src="screenshots/user_mask_position.jpg" alt="自有遮罩 + Position">
+    <figcaption>图 7 — 自有遮罩 + 展开的 Position 区域。</figcaption>
+  </figure>
+  <p>点击 <strong>+ Add user mask</strong> → 选择 PNG。自有遮罩<strong>覆盖</strong>库 — 若已加载，库复选框将被忽略。</p>
+  <p>加载后会出现 <strong>Position</strong> 按钮。其中：</p>
+  <ul>
+    <li><strong>Position X / Y</strong> — UV 中的斑点偏移（-1..1）</li>
+    <li><strong>Rotation</strong> — 旋转（0..360°）</li>
+    <li><strong>Scale</strong> — 大小（0.05..5.0，精细控制）</li>
+    <li><strong>Reset</strong> — 全部重置为默认值</li>
+  </ul>
+  <div class="note"><strong>提示。</strong>当你在源图（变体 0）时，Position 充当预览。点击生成 — 变体 1 记住精确位置，变体 2..N 以相同 Count 和 Scale 随机生成。</div>
+
+  <h3>遮罩库</h3>
+  <p>点击 <strong>Library</strong> → 弹出对话框，列出 <code>%APPDATA%/WearCraft/masks/spots/</code> 中的遮罩。勾选所需的。</p>
+  <ul>
+    <li><strong>Select all</strong> — 全选</li>
+    <li><strong>Clear</strong> — 全部取消</li>
+    <li><strong>Open folder</strong> — 在资源管理器中打开遮罩文件夹（可放入自己的 PNG）</li>
+  </ul>
+  <div class="note"><strong>重要。</strong>空的复选框列表 = 不应用任何内容。这是有意设计的，以防止意外应用全部遮罩。</div>
+
+  <h3>Position（用于库）</h3>
+  <p>当库遮罩处于活动状态（且未加载自有遮罩）时 — 在 Spots 标题上方有一个 <strong>Position</strong> 按钮。其中：</p>
+  <ul>
+    <li><strong>Position X / Y</strong> — 所有斑点的全局偏移</li>
+    <li><strong>Rotation</strong> — 全局旋转</li>
+    <li><strong>Random rotation</strong> — 若开启，每个斑点还会随机旋转</li>
+  </ul>
+</section>
+
+<section id="rust-zh">
+  <h2>7. 锈迹</h2>
+  <p>锈迹通过遮罩工作 — 与斑点相同方案。区别：</p>
+  <ul>
+    <li>用 <strong>Volume</strong> 代替 <strong>Thickness</strong>（锈迹体积，可为负）</li>
+    <li>用三种固定颜色代替 <strong>Color</strong>：核心（深棕）、主体（棕）、边缘（浅橙）</li>
+  </ul>
+  <p>所有其他参数（Count、Scale、Deform、Threshold、Sharpness、Position、Random rotation、Rim highlight、Normal enabled）与斑点相同。</p>
+  <p>锈迹遮罩存储在 <code>%APPDATA%/WearCraft/masks/rust/</code> — 与斑点分开。</p>
+</section>
+
+<section id="masks-zh">
+  <h2>8. 遮罩</h2>
+  <h3>格式</h3>
+  <p>遮罩是 PNG 或 JPG。读取两个通道：RGB 亮度和 alpha。应用自动检测使用哪个：</p>
+  <ul>
+    <li>若 alpha 变化较大 — 使用 alpha</li>
+    <li>否则 — 使用 RGB 亮度（平均值）</li>
+  </ul>
+  <p>结果始终简化为黑白图：白色 = 斑点，黑色 = 背景。</p>
+
+  <h3>存储</h3>
+  <p>所有遮罩位于 <code>%APPDATA%/WearCraft/masks/</code>：</p>
+  <ul>
+    <li><code>spots/</code> — 用于斑点预设</li>
+    <li><code>rust/</code> — 用于锈迹预设</li>
+  </ul>
+  <p>首次运行时，内置遮罩从应用资源复制到此文件夹。之后可放入自己的 — 它们将出现在库中。</p>
+
+  <h3>自有遮罩 vs 库</h3>
+  <ul>
+    <li><strong>自有遮罩</strong>（Add user mask）— 单个优先遮罩，覆盖一切</li>
+    <li><strong>库</strong>（复选框）— 仅勾选项。空 = 无</li>
+    <li>自有遮罩不使用平铺 — 缩小 Scale 时斑点不会复制</li>
+    <li>库使用平铺 — 斑点在纹理边缘处环绕</li>
+  </ul>
+</section>
+
+<section id="custom-zh">
+  <h2>9. 自定义遮罩</h2>
+  <p>参数面板最顶部的 <strong>Mask</strong> 区域。仅适用于 <strong>Custom</strong> 预设。</p>
+  <p>将单一遮罩直接叠加到 albedo/roughness/normal，不进行程序化斑点生成。参数：</p>
+  <ul>
+    <li><strong>Position X / Y</strong> — 遮罩偏移</li>
+    <li><strong>Scale</strong> — 大小（0.1..5.0）</li>
+    <li><strong>Rotation</strong> — 旋转（0..360°）</li>
+    <li><strong>Opacity</strong> — 叠加透明度</li>
+    <li><strong>Color</strong> — 颜色（仅 mono 遮罩）</li>
+    <li><strong>Affect albedo / roughness / normal</strong> — 影响哪些贴图</li>
+  </ul>
+  <p>加载快捷键 — <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>O</kbd>。</p>
+  <div class="note"><strong>提示。</strong>Custom 是在 albedo 上叠加 logo 或贴花的最简单方式。</div>
+</section>
+
+<section id="params-zh">
+  <h2>10. 参数与变体</h2>
+  <ul>
+    <li><strong>Variations</strong> — 生成多少个变体（5–50）</li>
+    <li><strong>Amount</strong> — 磨损强度（0–100%）。影响所有预设，但锈迹除外 — 其 Amount 固定</li>
+    <li><strong>Seed</strong> — 生成器种子。相同种子 + 相同设置 = 相同结果。骰子按钮 — 随机种子</li>
+  </ul>
+  <p>每个变体使用种子 = <code>params.seed + i * 7919</code>，其中 i 为变体索引（1..N）。这保证所有变体不同，同时在相同种子下结果可复现。</p>
+</section>
+
+<section id="tiling-zh">
+  <h2>11. 平铺与预览</h2>
+  <h3>平铺面板</h3>
+  <p>预览左上角的 <strong>Tiling</strong> 按钮：</p>
+  <ul>
+    <li><strong>Repeat X / Y</strong> — 纹理每轴重复次数（0.1..10）</li>
+    <li><strong>Rotation</strong> — UV 旋转（-180°..180°）</li>
+    <li><strong>Reset</strong> — 恢复 Repeat X/Y = 1，Rotation = 0</li>
+  </ul>
+  <div class="note"><strong>提示。</strong>预览中的平铺仅用于评估纹理在大面积上的表现。结果中 PBR 贴图只保存一次。</div>
+
+  <h3>变体导航</h3>
+  <p>预览底部 — 箭头 <kbd>◀</kbd> <kbd>▶</kbd> 和计数器。<strong>源图</strong> — 变体 0，着色器预览。<strong>1/5</strong> — 烘焙变体。</p>
+  <p>在变体 0 时 — 查看器显示着色器预览（斑点与锈迹）。在变体 1..N 时 — 显示 <code>wear_NN/</code> 中的实际 PNG。</p>
+
+  <h3>渲染质量</h3>
+  <p>预览以 16x 各向异性、SSAA ×2、AgX 色调映射渲染。球体 — 96×96 分段，PCF 阴影。</p>
+</section>
+
+<section id="save-zh">
+  <h2>12. 保存与引擎导出</h2>
+  <p>点击 <strong>保存</strong> 或 <kbd>Ctrl</kbd>+<kbd>S</kbd>。分区：</p>
+  <ul>
+    <li><strong>PNG</strong> — 将当前 PBR 集保存为 PNG</li>
+    <li><strong>ZIP</strong> — 将所有变体打包为压缩包</li>
+    <li><strong>OBJ</strong> — 导出模型几何（若已加载）</li>
+    <li><strong>Engines</strong> — 为游戏引擎导出</li>
+  </ul>
+
+  <h3>Unreal Engine</h3>
+  <p>ORM 打包：<code>R = AO, G = Roughness, B = Metalness</code>。法线贴图转换为 DirectX（绿通道 Y 翻转）。保存到 <code>unreal/</code> 子文件夹 + README.txt。</p>
+
+  <h3>Unity</h3>
+  <p>MetallicSmoothness：<code>R = Metal, G = AO, B = 0, A = Smoothness (1 − Roughness)</code>。单选框 <strong>Built-in / URP</strong> — URP 时 AO 单独保存。法线贴图 Y 翻转。保存到 <code>unity/</code> + README.txt。</p>
+
+  <div class="note"><strong>提示。</strong>在构建到引擎之前，请再次检查 <strong>Normal enabled</strong> 复选框 — 若法线贴图未更改，则无需翻转。</div>
+</section>
+
+<section id="hotkeys-zh">
+  <h2>13. 快捷键</h2>
+  <table>
+    <tr><th>按键</th><th>操作</th></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>O</kbd></td><td>加载 PBR 贴图</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>O</kbd></td><td>加载自定义遮罩（Custom 预设）</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>G</kbd></td><td>生成变体</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>S</kbd></td><td>保存</td></tr>
+    <tr><td><kbd>Esc</kbd></td><td>关闭当前对话框</td></tr>
+  </table>
+</section>
+
+<section id="settings-zh">
+  <h2>14. 信息与设置</h2>
+
+  <h3>Info</h3>
+  <p>标题栏中的 <strong>Info</strong> 按钮。包含 Help、About、Support、Manual。</p>
+
+  <h3>Settings</h3>
+  <ul>
+    <li><strong>Preview Resolution</strong> — 烘焙贴图分辨率（1024 / 2048 / 4096）</li>
+    <li><strong>Save Mode</strong> — <em>ask</em>（每次询问路径）或 <em>always</em>（保存到固定文件夹）</li>
+    <li><strong>Save Dir</strong> — always 模式的文件夹</li>
+    <li><strong>Open masks folder</strong> — 在资源管理器中打开 <code>%APPDATA%/WearCraft/masks/</code></li>
+  </ul>
+
+  <h3>日志</h3>
+  <p>底部 — 日志面板。折叠时显示最后一行，点击标题栏展开。日志对调试有用：可看到来自 Rust 和 JS 的所有消息。</p>
+</section>
+
+<section id="license-zh">
+  <h2>15. 许可</h2>
+  <p>WearCraft 在 <strong>MIT 许可</strong> 下发布 — 可免费使用，包括商业项目。</p>
+  <p style="margin-top: 32px;">由 <strong>INV.LVL</strong> 制作 · 2026</p>
+</section>
+
+<footer>
+  WearCraft v1.0.0 · MIT · INV.LVL · 2026
+  <br><br>
+  <a href="#top-zh" class="back">↑ 返回顶部</a>
+</footer>
+
+</div>
+
+<!-- Lightbox -->
+<div class="lightbox" id="lightbox">
+  <img id="lightbox-img" src="" alt="">
+  <div class="close-hint">Esc / click — close</div>
+</div>
+
+<script>
+  function setLang(lang) {
+    var ru = document.getElementById('content-ru');
+    var en = document.getElementById('content-en');
+    var zh = document.getElementById('content-zh');
+    var btnRu = document.getElementById('btn-ru');
+    var btnEn = document.getElementById('btn-en');
+    var btnZh = document.getElementById('btn-zh');
+
+    ru.style.display = 'none';
+    en.style.display = 'none';
+    zh.style.display = 'none';
+    btnRu.classList.remove('active');
+    btnEn.classList.remove('active');
+    btnZh.classList.remove('active');
+
+    if (lang === 'en') {
+      en.style.display = 'block';
+      btnEn.classList.add('active');
+      document.documentElement.lang = 'en';
+      document.title = 'WearCraft — User Manual';
+    } else if (lang === 'zh') {
+      zh.style.display = 'block';
+      btnZh.classList.add('active');
+      document.documentElement.lang = 'zh';
+      document.title = 'WearCraft — 用户手册';
+    } else {
+      ru.style.display = 'block';
+      btnRu.classList.add('active');
+      document.documentElement.lang = 'ru';
+      document.title = 'WearCraft — Руководство';
+    }
+    try {
+      localStorage.setItem('wearcraft_manual_lang', lang);
+    } catch (e) {}
+  }
+
+  (function initLang() {
+    var saved = null;
+    try { saved = localStorage.getItem('wearcraft_manual_lang'); } catch (e) {}
+    var lang = saved;
+    if (!lang) {
+      var nav = (navigator.language || navigator.userLanguage || 'ru').toLowerCase();
+      if (nav.startsWith('ru')) lang = 'ru';
+      else if (nav.startsWith('zh')) lang = 'zh';
+      else lang = 'en';
+    }
+    setLang(lang);
+  })();
+
+  // Lightbox
+  (function initLightbox() {
+    var lb = document.getElementById('lightbox');
+    var lbImg = document.getElementById('lightbox-img');
+
+    document.addEventListener('click', function(e) {
+      var img = e.target.closest('figure img');
+      if (img) {
+        e.preventDefault();
+        lbImg.src = img.src;
+        lb.classList.add('open');
+      }
+    });
+
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape' && lb.classList.contains('open')) {
+        lb.classList.remove('open');
+        lbImg.src = '';
+      }
+    });
+
+    lb.addEventListener('click', function(e) {
+      if (e.target === lb || e.target.classList.contains('close-hint')) {
+        lb.classList.remove('open');
+        lbImg.src = '';
+      }
+    });
+  })();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,35 @@
+[package]
+name = "wearcraft"
+version = "1.0.0"
+description = "WearCraft — procedural PBR wear generator"
+authors = ["INV.LVL"]
+license = "MIT"
+repository = ""
+edition = "2021"
+rust-version = "1.77"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.7.0", features = [] }
+
+[dependencies]
+base64 = "0.22"
+tauri-plugin-fs = "2"
+tauri-plugin-dialog = "2"
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+log = "0.4"
+tauri = { version = "2.12.0", features = ["protocol-asset"] }
+tauri-plugin-log = "2"
+zip = "2"
+image = "0.25"
+imageproc = "0.25"
+noise = "0.9"
+rand = "0.8"
+rayon = "1.10"
+tauri-plugin-shell = "2.0.0-rc.4"
