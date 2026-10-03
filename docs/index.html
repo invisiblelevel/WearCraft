@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WearCraft — Procedural wear generator for PBR textures</title>
+<meta name="description" content="WearCraft — desktop tool for procedural wear generation on PBR texture sets. Generate N unique wear variations: scratches, spots, rust. Export to Unreal / Unity.">
+<style>
+  :root {
+    --bg: #1a1d23;
+    --panel: #20242b;
+    --card: #282c34;
+    --input: #32373f;
+    --fg: #e8eaed;
+    --fg2: #9aa0a6;
+    --fg3: #5f6368;
+    --accent: #5b8dd9;
+    --accent-hover: #7aa8e8;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: "Segoe UI", "Noto Sans SC", -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { color: var(--accent-hover); text-decoration: underline; }
+
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+
+  /* Lang switcher */
+  .lang-switch {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 100;
+    background: var(--panel);
+    border: 1px solid var(--card);
+    border-radius: 10px;
+    padding: 4px;
+    display: flex;
+    gap: 2px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  }
+  .lang-switch button {
+    background: transparent;
+    color: var(--fg2);
+    border: none;
+    border-radius: 7px;
+    padding: 8px 14px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .lang-switch button:hover { color: var(--fg); }
+  .lang-switch button.active { background: var(--accent); color: #fff; }
+
+  /* Hero */
+  .hero {
+    padding: 120px 0 80px;
+    text-align: center;
+    background: linear-gradient(180deg, #20242b 0%, #1a1d23 100%);
+    border-bottom: 1px solid var(--card);
+  }
+  .hero h1 {
+    font-size: 56px;
+    font-weight: 800;
+    letter-spacing: -1px;
+    margin-bottom: 12px;
+    color: var(--fg);
+  }
+  .hero .ver {
+    display: inline-block;
+    background: var(--card);
+    color: var(--fg2);
+    font-size: 14px;
+    font-weight: 600;
+    padding: 4px 12px;
+    border-radius: 6px;
+    margin-left: 10px;
+    vertical-align: middle;
+  }
+  .hero .tagline {
+    font-size: 20px;
+    color: var(--fg2);
+    margin-bottom: 40px;
+  }
+  .hero-buttons {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 28px;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 600;
+    transition: all 0.2s;
+    border: 1px solid transparent;
+  }
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+  }
+  .btn-primary:hover { background: var(--accent-hover); text-decoration: none; color: #fff; }
+  .btn-secondary {
+    background: var(--panel);
+    color: var(--fg);
+    border-color: var(--card);
+  }
+  .btn-secondary:hover { border-color: var(--accent); text-decoration: none; color: var(--accent); }
+
+  /* Section */
+  section { padding: 80px 0; border-bottom: 1px solid var(--card); }
+  section:last-of-type { border-bottom: none; }
+  h2 {
+    font-size: 32px;
+    font-weight: 700;
+    margin-bottom: 24px;
+    color: var(--fg);
+  }
+  h3 { font-size: 20px; font-weight: 600; margin: 24px 0 12px; color: var(--fg); }
+  p { color: var(--fg2); margin-bottom: 16px; }
+
+  /* Features grid */
+  .features {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px;
+    margin-top: 32px;
+  }
+  .feature {
+    background: var(--panel);
+    border: 1px solid var(--card);
+    border-radius: 12px;
+    padding: 24px;
+    transition: border-color 0.2s;
+  }
+  .feature:hover { border-color: var(--accent); }
+  .feature h4 {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--fg);
+    margin-bottom: 8px;
+  }
+  .feature p {
+    font-size: 14px;
+    margin: 0;
+    color: var(--fg2);
+  }
+
+  /* Screenshots */
+  .screenshots-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 20px;
+    margin-top: 32px;
+  }
+  .screenshots-grid figure {
+    background: var(--panel);
+    border: 1px solid var(--card);
+    border-radius: 12px;
+    overflow: hidden;
+    transition: border-color 0.2s, transform 0.2s;
+    margin: 0;
+  }
+  .screenshots-grid figure:hover {
+    border-color: var(--accent);
+    transform: translateY(-4px);
+  }
+  .screenshots-grid img {
+    width: 100%;
+    display: block;
+    cursor: zoom-in;
+  }
+  .screenshots-grid figcaption {
+    padding: 12px 16px;
+    font-size: 13px;
+    color: var(--fg3);
+    border-top: 1px solid var(--card);
+  }
+
+  /* Requirements table */
+  .req-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 24px;
+    font-size: 14px;
+  }
+  .req-table th, .req-table td {
+    text-align: left;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--card);
+  }
+  .req-table th {
+    color: var(--fg3);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 700;
+  }
+  .req-table td { color: var(--fg2); }
+  .req-table td:first-child { color: var(--fg); font-weight: 600; }
+
+  /* Footer */
+  footer {
+    padding: 40px 0;
+    text-align: center;
+    color: var(--fg3);
+    font-size: 13px;
+    border-top: 1px solid var(--card);
+  }
+  footer a { color: var(--fg2); }
+  footer a:hover { color: var(--accent); }
+
+  /* Lightbox */
+  .lightbox {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(0,0,0,0.94);
+    cursor: zoom-out;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .lightbox.open { display: flex; }
+  .lightbox img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: 8px;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.8);
+  }
+  .lightbox .close-hint {
+    position: absolute;
+    top: 20px;
+    right: 24px;
+    color: var(--fg2);
+    font-size: 13px;
+    background: rgba(0,0,0,0.6);
+    padding: 8px 14px;
+    border-radius: 8px;
+    pointer-events: none;
+  }
+
+  /* Hidden */
+  .lang-content { display: none; }
+  .lang-content.active { display: block; }
+
+  @media (max-width: 700px) {
+    .hero h1 { font-size: 38px; }
+    .hero .tagline { font-size: 17px; }
+    h2 { font-size: 26px; }
+    .lang-switch { top: 8px; right: 8px; }
+    .lang-switch button { padding: 6px 10px; font-size: 12px; }
+    section { padding: 60px 0; }
+  }
+</style>
+</head>
+<body>
+
+<div class="lang-switch">
+  <button id="btn-ru" onclick="setLang('ru')">RU</button>
+  <button id="btn-en" onclick="setLang('en')">EN</button>
+  <button id="btn-zh" onclick="setLang('zh')">中文</button>
+</div>
+
+<!-- ═══════════════════ РУССКИЙ ═══════════════════ -->
+<div class="lang-content" id="content-ru">
+
+<section class="hero">
+  <div class="container">
+    <h1>WearCraft <span class="ver">v1.0.0</span></h1>
+    <p class="tagline">Процедурный генератор износа для PBR-текстур</p>
+    <div class="hero-buttons">
+      <a class="btn btn-primary" href="https://github.com/invisiblelevel/WearCraft/releases/latest" target="_blank">Скачать для Windows</a>
+      <a class="btn btn-secondary" href="https://invlvl.itch.io/wearcraft" target="_blank">itch.io</a>
+      <a class="btn btn-secondary" href="https://github.com/invisiblelevel/WearCraft" target="_blank">GitHub</a>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="container">
+    <h2>Что это</h2>
+    <p><strong>WearCraft</strong> — десктопное приложение для процедурной генерации износа PBR-текстур. Загрузи PBR-сет (albedo, normal, roughness, ao, height, metalness, edge), сгенерируй N уникальных вариаций износа и экспортируй в игровые движки.</p>
+    <p>Встроенный 3D-вьюер показывает результат в реальном времени. <strong>Превью полностью совпадает с запечённым результатом</strong> — что видишь, то и получишь.</p>
+  </div>
+</section>
+
+<section>
+  <div class="container">
+    <h2>Возможности</h2>
+    <div class="features">
+      <div class="feature">
+        <h4>Пресеты</h4>
+        <p>Custom mask, процедурные царапины, пятна, ржавчина</p>
+      </div>
+      <div class="feature">
+        <h4>Маски</h4>
+        <p>Своя маска (один PNG) или библиотека (папка в %APPDATA%)</p>
+      </div>
+      <div class="feature">
+        <h4>Позиционирование</h4>
+        <p>Двигай, крути, масштабируй каждое пятно. Тайлинг на вариацию</p>
+      </div>
+      <div class="feature">
+        <h4>Параллельная генерация</h4>
+        <p>На базе rayon. N уникальных вариаций, каждая со своим seed</p>
+      </div>
+      <div class="feature">
+        <h4>3D-вьюер</h4>
+        <p>Сфера, куб, цилиндр, тор или своя модель .obj / .gltf</p>
+      </div>
+      <div class="feature">
+        <h4>Экспорт в движки</h4>
+        <p>Unreal (ORM + DX normal), Unity (MetallicSmoothness, Built-in / URP)</p>
+      </div>
+      <div class="feature">
+        <h4>Локализация</h4>
+        <p>Русский, English, 中文</p>
+      </div>
+      <div class="feature">
+        <h4>PBR-пресеты</h4>
+        <p>Все параметры настроены под тип материала</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="container">
+    <h2>Скриншоты</h2>
+    <div class="screenshots-grid">
+      <figure>
+        <img src="screenshots/main_ui.jpg" alt="Главное окно">
+        <figcaption>Главное окно</figcaption>
+      </figure>
+      <figure>
+        <img src="screenshots/pbr_loading.jpg" alt="Загрузка PBR">
+        <figcaption>Загрузка PBR-карт</figcaption>
+      </figure>
+      <figure>
+        <img src="screenshots/presets.jpg" alt="Пресеты">
+        <figcaption>Пресеты</figcaption>
+      </figure>
+      <figure>
+        <img src="screenshots/scratches_params.jpg" alt="Scratches">
+        <figcaption>Процедурные царапины</figcaption>
+      </figure>
+      <figure>
+        <img src="screenshots/dirt_params.jpg" alt="Spots">
+        <figcaption>Пятна</figcaption>
+      </figure>
+      <figure>
+        <img src="screenshots/user_mask_position.jpg" alt="Позиция">
+        <figcaption>Своя маска + Position</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="container">
+    <h2>Системные требования</h2>
+    <table class="req-table">
+      <thead>
+        <tr><th>Параметр</th><th>Минимум</th><th>Рекомендуется</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>ОС</td><td>Windows 10 / 11 (64-bit)</td><td>Windows 11 (64-bit)</td></tr>
+        <tr><td>Процессор</td><td>Quad-core 2.0 GHz</td><td>Hexa-core 3.0 GHz</td></tr>
+        <tr><td>ОЗУ</td><td>8 GB</td><td>16 GB</td></tr>
+        <tr><td>Графика</td><td>Встроенная GPU</td><td>NVIDIA GTX 1650 / AMD RX 5700</td></tr>
+        <tr><td>DirectX</td><td>11</td><td>12</td></tr>
+        <tr><td>Диск</td><td>2 GB</td><td>8 GB SSD</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size: 13px; margin-top: 16px;">Установщик полностью оффлайн — WebView2 вшит. Поддерживаются 4K и 8K текстуры.</p>
+  </div>
+</section>
+
+<section>
+  <div class="container">
+    <h2>Установка</h2>
+    <p>Скачай <code>WearCraft_1.0.0_x64-setup.exe</code> и запусти. Установщик предложит два режима:</p>
+    <ul style="color: var(--fg2); padding-left: 24px; margin: 16px 0;">
+      <li><strong>Per-user</strong> — установка в %LOCALAPPDATA%, без прав администратора</li>
+      <li><strong>Per-machine</strong> — установка в Program Files, требует прав администратора</li>
+    </ul>
+  </div>
+</section>
+
+<footer>
+  <div class="container">
+    <p>Сделано <strong>INV.LVL</strong> · 2026 · MIT License</p>
+    <p style="margin-top: 8px;">
+      <a href="https://github.com/invisiblelevel/WearCraft" target="_blank">GitHub</a> ·
+      <a href="https://invlvl.itch.io/wearcraft" target="_blank">itch.io</a> ·
+      <a href="https://github.com/invisiblelevel/WearCraft/releases/latest" target="_blank">Releases</a>
+    </p>
+  </div>
+</footer>
+
+</div>
+
+<!-- ═══════════════════ ENGLISH ═══════════════════ -->
+<div class="lang-content" id="content-en">
+
+<section class="hero">
+  <div class="container">
+    <h1>WearCraft <span class="ver">v1.0.0</span></h1>
+    <p class="tagline">Procedural wear generator for PBR textures</p>
+    <div class="hero-buttons">
+      <a class="btn btn-primary" href="https://github.com/invisiblelevel/WearCraft/releases/latest" target="_blank">Download for Windows</a>
+      <a class="btn btn-secondary" href="https://invlvl.itch.io/wearcraft" target="_blank">itch.io</a>
+      <a class="btn btn-secondary" href="https://github.com/invisiblelevel/WearCraft" target="_blank">GitHub</a>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="container">
+    <h2>What is it</h2>
+    <p><strong>WearCraft</strong> is a desktop application for procedural wear generation on PBR texture sets. Load a PBR set (albedo, normal, roughness, ao, height, metalness, edge), generate N unique wear variations, and export to game engines.</p>
+    <p>The built-in 3D viewer shows the result in real time. <strong>The preview fully matches the baked result</strong> — what you see is what you get.</p>
+  </div>
+</section>
+
+<section>
+  <div class="container">
+    <h2>Features</h2>
+    <div class="features">
+      <div class="feature">
+        <h4>Presets</h4>
+        <p>Custom mask, procedural scratches, spots, rust</p>
+      </div>
+      <div class="feature">
+        <h4>Masks</h4>
+        <p>Own mask (single PNG) or library (folder-based, %APPDATA%)</p>
+      </div>
+      <div class="feature">
+        <h4>Positioning</h4>
+        <p>Move, rotate, scale each spot. Tiling control per variation</p>
+      </div>
+      <div class="feature">
+        <h4>Parallel Generation</h4>
+        <p>Rayon-powered. N unique variations, each with own seed</p>
+      </div>
+      <div class="feature">
+        <h4>3D Viewer</h4>
+        <p>Sphere, cube, cylinder, torus, or your own .obj / .gltf model</p>
+      </div>
+      <div class="feature">
+        <h4>Engine Export</h4>
+        <p>Unreal (ORM + DX normal), Unity (MetallicSmoothness, Built-in / URP)</p>
+      </div>
+      <div class="feature">
+        <h4>i18n</h4>
+        <p>Russian, English, 中文</p>
+      </div>
+      <div class="feature">
+        <h4>PBR Presets</h4>
+        <p>All parameters tuned per material type</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="container">
+    <h2>Screenshots</h2>
+    <div class="screenshots-grid">
+      <figure>
+        <img src="screenshots/main_ui.jpg" alt="Main UI">
+        <figcaption>Main UI</figcaption>
+      </figure>
+      <figure>
+        <img src="screenshots/pbr_loading.jpg" alt="PBR Loading">
+        <figcaption>PBR Loading</figcaption>
+      </figure>
+      <figure>
+        <img src="screenshots/presets.jpg" alt="Presets">
+        <figcaption>Presets</figcaption>
+      </figure>
+      <figure>
+        <img src="screenshots/scratches_params.jpg" alt="Scratches">
+        <figcaption>Procedural Scratches</figcaption>
+      </figure>
+      <figure>
+        <img src="screenshots/dirt_params.jpg" alt="Spots">
+        <figcaption>Spots</figcaption>
+      </figure>
+      <figure>
+        <img src="screenshots/user_mask_position.jpg" alt="Position">
+        <figcaption>User mask + Position</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="container">
+    <h2>System Requirements</h2>
+    <table class="req-table">
+      <thead>
+        <tr><th>Parameter</th><th>Minimum</th><th>Recommended</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>OS</td><td>Windows 10 / 11 (64-bit)</td><td>Windows 11 (64-bit)</td></tr>
+        <tr><td>Processor</td><td>Quad-core 2.0 GHz</td><td>Hexa-core 3.0 GHz</td></tr>
+        <tr><td>Memory</td><td>8 GB</td><td>16 GB</td></tr>
+        <tr><td>Graphics</td><td>Integrated GPU</td><td>NVIDIA GTX 1650 / AMD RX 5700</td></tr>
+        <tr><td>DirectX</td><td>11</td><td>12</td></tr>
+        <tr><td>Storage</td><td>2 GB</td><td>8 GB SSD</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size: 13px; margin-top: 16px;">Fully offline installer — WebView2 is bundled. 4K and 8K textures supported.</p>
+  </div>
+</section>
+
+<section>
+  <div class="container">
+    <h2>Installation</h2>
+    <p>Download <code>WearCraft_1.0.0_x64-setup.exe</code> and run it. The installer offers two modes:</p>
+    <ul style="color: var(--fg2); padding-left: 24px; margin: 16px 0;">
+      <li><strong>Per-user</strong> — installs to %LOCALAPPDATA%, no admin rights needed</li>
+      <li><strong>Per-machine</strong> — installs to Program Files, requires admin rights</li>
+    </ul>
+  </div>
+</section>
+
+<footer>
+  <div class="container">
+    <p>Made by <strong>INV.LVL</strong> · 2026 · MIT License</p>
+    <p style="margin-top: 8px;">
+      <a href="https://github.com/invisiblelevel/WearCraft" target="_blank">GitHub</a> ·
+      <a href="https://invlvl.itch.io/wearcraft" target="_blank">itch.io</a> ·
+      <a href="https://github.com/invisiblelevel/WearCraft/releases/latest" target="_blank">Releases</a>
+    </p>
+  </div>
+</footer>
+
+</div>
+
+<!-- ═══════════════════ 中文 ═══════════════════ -->
+<div class="lang-content" id="content-zh">
+
+<section class="hero">
+  <div class="container">
+    <h1>WearCraft <span class="ver">v1.0.0</span></h1>
+    <p class="tagline">PBR 纹理程序化磨损生成器</p>
+    <div class="hero-buttons">
+      <a class="btn btn-primary" href="https://github.com/invisiblelevel/WearCraft/releases/latest" target="_blank">下载 Windows 版</a>
+      <a class="btn btn-secondary" href="https://invlvl.itch.io/wearcraft" target="_blank">itch.io</a>
+      <a class="btn btn-secondary" href="https://github.com/invisiblelevel/WearCraft" target="_blank">GitHub</a>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="container">
+    <h2>简介</h2>
+    <p><strong>WearCraft</strong> 是一款用于 PBR 纹理程序化磨损生成的桌面应用。加载 PBR 纹理集（albedo、normal、roughness、ao、height、metalness、edge），生成 N 个独特的磨损变体，并导出到游戏引擎。</p>
+    <p>内置 3D 查看器实时显示结果。<strong>预览与烘焙结果完全一致</strong> — 所见即所得。</p>
+  </div>
+</section>
+
+<section>
+  <div class="container">
+    <h2>功能</h2>
+    <div class="features">
+      <div class="feature">
+        <h4>预设</h4>
+        <p>自定义遮罩、程序化刮痕、斑点、锈迹</p>
+      </div>
+      <div class="feature">
+        <h4>遮罩</h4>
+        <p>自有遮罩（单个 PNG）或库（%APPDATA% 文件夹）</p>
+      </div>
+      <div class="feature">
+        <h4>定位</h4>
+        <p>移动、旋转、缩放每个斑点。每个变体的平铺控制</p>
+      </div>
+      <div class="feature">
+        <h4>并行生成</h4>
+        <p>基于 rayon。N 个独特变体，每个有自己的种子</p>
+      </div>
+      <div class="feature">
+        <h4>3D 查看器</h4>
+        <p>球体、立方体、圆柱、圆环，或自定义 .obj / .gltf 模型</p>
+      </div>
+      <div class="feature">
+        <h4>引擎导出</h4>
+        <p>Unreal（ORM + DX 法线）、Unity（MetallicSmoothness，Built-in / URP）</p>
+      </div>
+      <div class="feature">
+        <h4>多语言</h4>
+        <p>俄语、英语、中文</p>
+      </div>
+      <div class="feature">
+        <h4>PBR 预设</h4>
+        <p>所有参数按材质类型调优</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="container">
+    <h2>截图</h2>
+    <div class="screenshots-grid">
+      <figure>
+        <img src="screenshots/main_ui.jpg" alt="主界面">
+        <figcaption>主界面</figcaption>
+      </figure>
+      <figure>
+        <img src="screenshots/pbr_loading.jpg" alt="加载 PBR">
+        <figcaption>加载 PBR 贴图</figcaption>
+      </figure>
+      <figure>
+        <img src="screenshots/presets.jpg" alt="预设">
+        <figcaption>预设</figcaption>
+      </figure>
+      <figure>
+        <img src="screenshots/scratches_params.jpg" alt="刮痕">
+        <figcaption>程序化刮痕</figcaption>
+      </figure>
+      <figure>
+        <img src="screenshots/dirt_params.jpg" alt="斑点">
+        <figcaption>斑点</figcaption>
+      </figure>
+      <figure>
+        <img src="screenshots/user_mask_position.jpg" alt="位置">
+        <figcaption>自有遮罩 + Position</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="container">
+    <h2>系统要求</h2>
+    <table class="req-table">
+      <thead>
+        <tr><th>参数</th><th>最低</th><th>推荐</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>操作系统</td><td>Windows 10 / 11 (64 位)</td><td>Windows 11 (64 位)</td></tr>
+        <tr><td>处理器</td><td>四核 2.0 GHz</td><td>六核 3.0 GHz</td></tr>
+        <tr><td>内存</td><td>8 GB</td><td>16 GB</td></tr>
+        <tr><td>显卡</td><td>集成显卡</td><td>NVIDIA GTX 1650 / AMD RX 5700</td></tr>
+        <tr><td>DirectX</td><td>11</td><td>12</td></tr>
+        <tr><td>存储</td><td>2 GB</td><td>8 GB SSD</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size: 13px; margin-top: 16px;">完全离线安装程序 — WebView2 已内置。支持 4K 和 8K 纹理。</p>
+  </div>
+</section>
+
+<section>
+  <div class="container">
+    <h2>安装</h2>
+    <p>下载 <code>WearCraft_1.0.0_x64-setup.exe</code> 并运行。安装程序提供两种模式：</p>
+    <ul style="color: var(--fg2); padding-left: 24px; margin: 16px 0;">
+      <li><strong>Per-user</strong> — 安装到 %LOCALAPPDATA%，无需管理员权限</li>
+      <li><strong>Per-machine</strong> — 安装到 Program Files，需要管理员权限</li>
+    </ul>
+  </div>
+</section>
+
+<footer>
+  <div class="container">
+    <p>由 <strong>INV.LVL</strong> 制作 · 2026 · MIT 许可</p>
+    <p style="margin-top: 8px;">
+      <a href="https://github.com/invisiblelevel/WearCraft" target="_blank">GitHub</a> ·
+      <a href="https://invlvl.itch.io/wearcraft" target="_blank">itch.io</a> ·
+      <a href="https://github.com/invisiblelevel/WearCraft/releases/latest" target="_blank">Releases</a>
+    </p>
+  </div>
+</footer>
+
+</div>
+
+<!-- Lightbox -->
+<div class="lightbox" id="lightbox">
+  <img id="lightbox-img" src="" alt="">
+  <div class="close-hint">Esc / click — close</div>
+</div>
+
+<script>
+  function setLang(lang) {
+    document.querySelectorAll('.lang-content').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.lang-switch button').forEach(el => el.classList.remove('active'));
+
+    const content = document.getElementById('content-' + lang);
+    const btn = document.getElementById('btn-' + lang);
+    if (content) content.classList.add('active');
+    if (btn) btn.classList.add('active');
+
+    document.documentElement.lang = lang;
+    try { localStorage.setItem('wearcraft_landing_lang', lang); } catch(e) {}
+  }
+
+  (function initLang() {
+    let saved = null;
+    try { saved = localStorage.getItem('wearcraft_landing_lang'); } catch(e) {}
+    let lang = saved;
+    if (!lang) {
+      const nav = (navigator.language || 'en').toLowerCase();
+      if (nav.startsWith('ru')) lang = 'ru';
+      else if (nav.startsWith('zh')) lang = 'zh';
+      else lang = 'en';
+    }
+    setLang(lang);
+  })();
+
+  // Lightbox
+  (function initLightbox() {
+    const lb = document.getElementById('lightbox');
+    const lbImg = document.getElementById('lightbox-img');
+
+    document.addEventListener('click', function(e) {
+      const img = e.target.closest('.screenshots-grid img');
+      if (img) {
+        e.preventDefault();
+        lbImg.src = img.src;
+        lb.classList.add('open');
+      }
+    });
+
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape' && lb.classList.contains('open')) {
+        lb.classList.remove('open');
+        lbImg.src = '';
+      }
+    });
+
+    lb.addEventListener('click', function(e) {
+      if (e.target === lb || e.target.classList.contains('close-hint')) {
+        lb.classList.remove('open');
+        lbImg.src = '';
+      }
+    });
+  })();
+</script>
+
+</body>
+</html>
