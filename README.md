@@ -1,96 +1,116 @@
-<div align="center">
-WearCraft
-Procedural wear generator for PBR textures
+# WearCraft
 
-https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge
-https://img.shields.io/badge/Tauri-2.x-FFC131?style=for-the-badge&logo=tauri&logoColor=black
-https://img.shields.io/badge/Svelte-5-FF3E00?style=for-the-badge&logo=svelte&logoColor=white
-https://img.shields.io/badge/Rust-1.80+-B7410E?style=for-the-badge&logo=rust&logoColor=white
-https://img.shields.io/badge/Three.js-r180+-000000?style=for-the-badge&logo=three.js&logoColor=white
+**Procedural wear generator for PBR textures**
 
-</div>
-Concept
-WearCraft is a desktop application for procedural wear generation on PBR texture sets.
+![Version](https://img.shields.io/badge/version-1.0.0-orange)
+![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Tauri](https://img.shields.io/badge/Tauri-2.x-FFC131)
+![Svelte](https://img.shields.io/badge/Svelte-5-FF3E00)
+![Rust](https://img.shields.io/badge/Rust-1.80%2B-B7410E)
 
-Load a PBR set (albedo, normal, roughness, ao, height, metalness, edge) -> generate N unique wear variations -> export to game engines.
+---
 
-Built-in 3D viewer shows the result in real time. The preview fully matches the baked result — what you see is what you get.
+## What is it
 
-Features
-Feature	Description
-Presets	Custom mask, procedural scratches, spots, rust
-Masks	Own mask (single PNG) or library (folder-based, %APPDATA%)
-Precise Positioning	Move, rotate, scale each spot. Tiling control per variation
-Parallel Generation	Rayon-powered. N variations, each with unique seed
-3D Preview	Sphere, cube, cylinder, torus, or your own .obj / .gltf model
-Engine Export	Unreal Engine (ORM + DX normal), Unity (MetallicSmoothness, Built-in / URP)
-i18n	Russian, English, Chinese
-PBR Presets	All parameters tuned per material type
-Quick Start
-Requirements
-Windows 10 / 11 (x64)
+**WearCraft** is a desktop application for procedural wear generation on PBR texture sets. Load a PBR set (albedo, normal, roughness, ao, height, metalness, edge), generate N unique wear variations, and export to game engines.
 
-WebView2 (already installed on Win11, included in the installer for Win10)
+The built-in 3D viewer shows the result in real time. **The preview fully matches the baked result** — what you see is what you get.
 
-Rust 1.80+ and Node.js 20+ (to build from source)
+---
 
-Run from source
-git clone https://github.com/invisiblelevel/WearCraft.git
-cd WearCraft
-npm install
-npm run tauri dev
-npm run tauri build
+## Features
 
-Installer
-Download WearCraft_1.0.0_x64-setup.exe from Releases and run. Fully offline installation — no internet required.
+- **Presets:** Custom mask, procedural scratches, spots, rust
+- **Masks:** Own mask (single PNG) or library (folder-based, %APPDATA%)
+- **Positioning:** Move, rotate, scale each spot. Tiling control per variation
+- **Generation:** Parallel (rayon), N variations, each with unique seed
+- **3D Preview:** Sphere, cube, cylinder, torus, or your own .obj / .gltf model
+- **Engine Export:** Unreal Engine (ORM + DX normal), Unity (MetallicSmoothness, Built-in / URP)
+- **i18n:** Russian, English, Chinese
+- **PBR Presets:** All parameters tuned per material type
 
-Screenshots
-<div align="center">
-Main UI	PBR Loaded	Spots + Position
-https://src-tauri/assets/screenshots/main_ui.jpg	https://src-tauri/assets/screenshots/pbr_loading.jpg	https://src-tauri/assets/screenshots/user_mask_position.jpg
-</div>
-Tech Stack
-Layer	Tech
-Desktop	Tauri 2
-Frontend	Svelte 5 (runes), Vite
-3D	Three.js
-Backend	Rust (image, noise, rand, rayon)
-Build	cargo, npm
-Documentation
-User Manual — RU / EN / ZH
+---
 
-PROGRESS.md — development log
+## Requirements
 
-WEARCRAFT_CONTEXT.md — full project context
+- Windows 10 / 11 (x64)
+- WebView2 (included in the installer)
+- Rust 1.80+ and Node.js 20+ (to build from source)
 
-Roadmap
-☑ PBR texture loading (albedo, normal, roughness, AO, height, metalness, edge)
-☑ 3D model viewer (.obj / .gltf)
-☑ Presets: Custom / Scratches / Spots / Rust
-☑ User mask + library masks
-☑ Position / Rotation / Scale for masks
-☑ Parallel generation (rayon)
-☑ Unreal / Unity export
-☑ Preview = baked result (shader matches Rust)
-☑ User manual (HTML, 3 languages)
-□ GPU compute for generation
-□ Light theme
-□ Resizable panels
-Contributing
-Fork the repo
+---
 
-Create a feature branch (git checkout -b feature/amazing)
+## Run from source
 
-Commit (git commit -m 'Add amazing feature')
+    git clone https://github.com/invisiblelevel/WearCraft.git
+    cd WearCraft
+    npm install
+    npm run tauri dev
 
-Push (git push origin feature/amazing)
+Build release:
 
-Open a Pull Request
+    npm run tauri build
 
-License
+---
+
+## Installer
+
+Download the installer from Releases and run it. Fully offline installation — no internet required.
+
+---
+
+## Screenshots
+
+![Main UI](src-tauri/assets/screenshots/main_ui.jpg)
+
+![PBR Loading](src-tauri/assets/screenshots/pbr_loading.jpg)
+
+![Spots + Position](src-tauri/assets/screenshots/user_mask_position.jpg)
+
+---
+
+## Tech Stack
+
+- **Desktop:** Tauri 2
+- **Frontend:** Svelte 5 (runes), Vite
+- **3D:** Three.js
+- **Backend:** Rust (image, noise, rand, rayon)
+
+---
+
+## Documentation
+
+- `src-tauri/assets/manual.html` — User Manual (RU / EN / ZH)
+- `PROGRESS.md` — Development log
+- `WEARCRAFT_CONTEXT.md` — Full project context
+
+---
+
+## Roadmap
+
+- [x] PBR texture loading
+- [x] 3D model viewer (.obj / .gltf)
+- [x] Presets: Custom / Scratches / Spots / Rust
+- [x] User mask + library masks
+- [x] Position / Rotation / Scale for masks
+- [x] Parallel generation (rayon)
+- [x] Unreal / Unity export
+- [x] Preview = baked result
+- [x] User manual (HTML, 3 languages)
+- [ ] GPU compute for generation
+- [ ] Light theme
+- [ ] Resizable panels
+
+---
+
+## License
+
 MIT License — free for commercial use.
 
-<div align="center">
-Made by INV.LVL · 2026
+---
 
-</div>
+**Author:** INV.LVL
+**Version:** 1.0.0
+**Date:** 2026
+
+---
