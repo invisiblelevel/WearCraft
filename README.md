@@ -78,14 +78,6 @@ Download the installer from Releases and run it. Fully offline installation — 
 
 ---
 
-## Documentation
-
-- `src-tauri/assets/manual.html` — User Manual (RU / EN / ZH)
-- `PROGRESS.md` — Development log
-- `WEARCRAFT_CONTEXT.md` — Full project context
-
----
-
 ## Roadmap
 
 - [x] PBR texture loading
