@@ -78,6 +78,27 @@ Download the installer from Releases and run it. Fully offline installation — 
 
 ---
 
+## System Requirements
+
+Minimum:
+OS: Windows 10 / 11 (64-bit)
+Processor: Quad-core 2.0 GHz (Intel i5 / AMD Ryzen 5 or equivalent)
+Memory: 8 GB RAM
+Graphics: Integrated GPU (Intel UHD 620 / AMD Vega 8) or better
+DirectX: Version 11
+Storage: 2 GB available space
+
+Recommended:
+OS: Windows 11 (64-bit)
+Processor: Hexa-core 3.0 GHz (Intel i7 / AMD Ryzen 7 or equivalent)
+Memory: 16 GB RAM
+Graphics: NVIDIA GTX 1650 / AMD RX 5700 or better (for smooth 3D preview with 4K/8K textures)
+DirectX: Version 12
+Storage: 8 GB SSD
+
+
+---
+
 ## Roadmap
 
 - [x] PBR texture loading
