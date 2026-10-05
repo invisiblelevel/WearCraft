@@ -1,16 +1,12 @@
 mod commands;
 mod core;
-mod io;
 
 use tauri::Manager;
 
 #[tauri::command]
 fn open_manual(app: tauri::AppHandle) -> Result<(), String> {
-    // В dev: manual.html лежит в src-tauri/assets/manual.html
-    // В release: в resource_dir/assets/manual.html
     let mut tried: Vec<String> = Vec::new();
 
-    // 1. resource_dir (release)
     if let Ok(res_dir) = app.path().resource_dir() {
         let p = res_dir.join("assets").join("manual.html");
         tried.push(p.to_string_lossy().to_string());
@@ -19,7 +15,6 @@ fn open_manual(app: tauri::AppHandle) -> Result<(), String> {
         }
     }
 
-    // 2. рядом с exe (release alt)
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
             let p = dir.join("assets").join("manual.html");
@@ -30,7 +25,6 @@ fn open_manual(app: tauri::AppHandle) -> Result<(), String> {
         }
     }
 
-    // 3. dev fallback: target/debug/exe → ../../assets/manual.html
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
             let p = dir.join("..").join("..").join("assets").join("manual.html");

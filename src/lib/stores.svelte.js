@@ -8,8 +8,10 @@ export const params = $state({
 export const PRESET_DEFAULTS = {
   custom:    { warp: 0,  amount: 0  },
   scratches: { warp: 20, amount: 50 },
+  streaks:   { warp: 40, amount: 90 },
   dirt:      { warp: 40, amount: 60 },
   rust:      { warp: 30, amount: 70 },
+  decal:     { warp: 0,  amount: 100 },
 };
 
 export function setPreset(name) {
@@ -21,13 +23,29 @@ export function setPreset(name) {
 
 // Scratch
 export const scratchParams = $state({
+  procedural: true,
   density: 0.5, length: 0.15, thickness: 2.0,
   waviness: 0.35, branches: 0.1, clusters: 0.3,
   normalEnabled: true, depth: 0.8,
   realistic: true, rimHighlight: true,
+  count: 3.0,
+  maskScale: 1.0,
+  deform: 0.3,
+  threshold: 0.5,
+  sharpness: 0.5,
+  color: [95, 85, 75],
+  maskThickness: -0.3,
+  maskRimHighlight: true,
+  maskNormalEnabled: true,
+  disableTiling: false,
+  posX: 0.0,
+  posY: 0.0,
+  rotation: 0.0,
+  randomRotation: false,
 });
 
 export function resetScratchParams() {
+  scratchParams.procedural = true;
   scratchParams.density = 0.5;
   scratchParams.length = 0.15;
   scratchParams.thickness = 2.0;
@@ -38,9 +56,23 @@ export function resetScratchParams() {
   scratchParams.depth = 0.8;
   scratchParams.realistic = true;
   scratchParams.rimHighlight = true;
+  scratchParams.count = 3.0;
+  scratchParams.maskScale = 1.0;
+  scratchParams.deform = 0.3;
+  scratchParams.threshold = 0.5;
+  scratchParams.sharpness = 0.5;
+  scratchParams.color = [95, 85, 75];
+  scratchParams.maskThickness = -0.3;
+  scratchParams.maskRimHighlight = true;
+  scratchParams.maskNormalEnabled = true;
+  scratchParams.disableTiling = false;
+  scratchParams.posX = 0.0;
+  scratchParams.posY = 0.0;
+  scratchParams.rotation = 0.0;
+  scratchParams.randomRotation = false;
 }
 
-// Dirt (через маски)
+// Dirt
 export const dirtParams = $state({
   count: 3.0,
   scale: 1.0,
@@ -51,11 +83,11 @@ export const dirtParams = $state({
   thickness: 0.5,
   rimHighlight: true,
   normalEnabled: true,
-  // Заход 23+: ручное управление тайлингом библиотеки
   posX: 0.0,
   posY: 0.0,
   rotation: 0.0,
   randomRotation: true,
+  disableTiling: false,
 });
 
 export function resetDirtParams() {
@@ -72,9 +104,10 @@ export function resetDirtParams() {
   dirtParams.posY = 0.0;
   dirtParams.rotation = 0.0;
   dirtParams.randomRotation = true;
+  dirtParams.disableTiling = false;
 }
 
-// Rust (через маски)
+// Rust
 export const rustParams = $state({
   count: 3.0,
   scale: 1.0,
@@ -84,11 +117,11 @@ export const rustParams = $state({
   volume: 0,
   rimHighlight: true,
   normalEnabled: true,
-  // Заход 23+: ручное управление тайлингом библиотеки
   posX: 0.0,
   posY: 0.0,
   rotation: 0.0,
   randomRotation: true,
+  disableTiling: false,
 });
 
 export function resetRustParams() {
@@ -104,9 +137,55 @@ export function resetRustParams() {
   rustParams.posY = 0.0;
   rustParams.rotation = 0.0;
   rustParams.randomRotation = true;
+  rustParams.disableTiling = false;
 }
 
-// Custom Mask (общая, для пресета custom)
+// Streaks
+export const streakParams = $state({
+  procedural: true,
+  count: 28.0,
+  threshold: 0.2,
+  sharpness: 0.6,
+  color: [95, 85, 75],
+  thickness: 0.35,
+  rimHighlight: true,
+  normalEnabled: true,
+  size: 0.015,
+  stretch: 20.0,
+  waviness: 0.0,
+  posX: 0.0,
+  posY: 0.0,
+  rotation: 0.0,
+  procScale: 1.0,
+  maskScale: 1.0,
+  deform: 0.3,
+  randomRotation: false,
+  disableTiling: false,
+});
+
+export function resetStreakParams() {
+  streakParams.procedural = true;
+  streakParams.count = 28.0;
+  streakParams.threshold = 0.2;
+  streakParams.sharpness = 0.6;
+  streakParams.color = [95, 85, 75];
+  streakParams.thickness = 0.35;
+  streakParams.rimHighlight = true;
+  streakParams.normalEnabled = true;
+  streakParams.size = 0.015;
+  streakParams.stretch = 20.0;
+  streakParams.waviness = 0.0;
+  streakParams.posX = 0.0;
+  streakParams.posY = 0.0;
+  streakParams.rotation = 0.0;
+  streakParams.procScale = 1.0;
+  streakParams.maskScale = 1.0;
+  streakParams.deform = 0.3;
+  streakParams.randomRotation = false;
+  streakParams.disableTiling = false;
+}
+
+// Custom Mask
 export const maskParams = $state({
   enabled: false,
   path: '',
@@ -141,8 +220,139 @@ export function resetMaskParams() {
   maskParams.fileName = '';
 }
 
-// ─── Settings ───
+// DECAL
+export const decalParams = $state({
+  enabled: false,
+  path: '',
+  heightPath: '',
+  fileName: '',
+  heightFileName: '',
+  posX: 0.0,
+  posY: 0.0,
+  scale: 1.0,
+  rotation: 0.0,
+  keepAspect: true,
+  opacity: 1.0,
+  randomPosition: false,
+  randomRotation: false,
+  tileEdge: false,
+  affectAlbedo: true,
+  affectRoughness: false,
+  affectNormal: false,
+  heightIntensity: 0.0,
+  texture: null,
+  heightTexture: null,
+  aspectW: 1,
+  aspectH: 1,
+});
 
+export function resetDecalParams() {
+  decalParams.enabled = false;
+  decalParams.path = '';
+  decalParams.heightPath = '';
+  decalParams.fileName = '';
+  decalParams.heightFileName = '';
+  decalParams.posX = 0.0;
+  decalParams.posY = 0.0;
+  decalParams.scale = 1.0;
+  decalParams.rotation = 0.0;
+  decalParams.keepAspect = true;
+  decalParams.opacity = 1.0;
+  decalParams.randomPosition = false;
+  decalParams.randomRotation = false;
+  decalParams.tileEdge = false;
+  decalParams.affectAlbedo = true;
+  decalParams.affectRoughness = false;
+  decalParams.affectNormal = false;
+  decalParams.heightIntensity = 0.0;
+  decalParams.texture = null;
+  decalParams.heightTexture = null;
+  decalParams.aspectW = 1;
+  decalParams.aspectH = 1;
+}
+
+const ALLOWED_DECAL_EXTS = ['png', 'jpg', 'jpeg'];
+
+async function pickOneFile(filters) {
+  const { open } = await import('@tauri-apps/plugin-dialog');
+  const picked = await open({ multiple: false, filters });
+  if (!picked) return null;
+  return Array.isArray(picked) ? picked[0] : picked;
+}
+
+export async function pickDecalImage() {
+  const picked = await pickOneFile([
+    { name: 'Images', extensions: ALLOWED_DECAL_EXTS },
+  ]);
+  if (!picked) return;
+
+  const ext = picked.split('.').pop().toLowerCase();
+  if (!ALLOWED_DECAL_EXTS.includes(ext)) {
+    pushToast(`Формат .${ext} не поддерживается`, 'error');
+    return;
+  }
+
+  const { loadDecalTexture } = await import('./decal-textures.js');
+  const result = await loadDecalTexture(picked);
+  if (!result) {
+    pushToast('Не удалось загрузить картинку', 'error');
+    return;
+  }
+
+  decalParams.path = picked;
+  decalParams.fileName = getBasename(picked);
+  decalParams.texture = result.texture;
+  decalParams.aspectW = result.width;
+  decalParams.aspectH = result.height;
+  decalParams.enabled = true;
+
+  pushLog(`[Decal] Картинка: ${decalParams.fileName} (${result.width}x${result.height}, alpha=${result.hasAlpha})`);
+  pushToast(`Decal: ${decalParams.fileName}`, 'success');
+}
+
+export function clearDecalImage() {
+  decalParams.path = '';
+  decalParams.fileName = '';
+  decalParams.texture = null;
+  decalParams.enabled = false;
+  pushLog('[Decal] Картинка сброшена');
+}
+
+export async function pickDecalHeight() {
+  const picked = await pickOneFile([
+    { name: 'Height map', extensions: ALLOWED_DECAL_EXTS },
+  ]);
+  if (!picked) return;
+
+  const ext = picked.split('.').pop().toLowerCase();
+  if (!ALLOWED_DECAL_EXTS.includes(ext)) {
+    pushToast(`Формат .${ext} не поддерживается`, 'error');
+    return;
+  }
+
+  const { loadHeightTexture } = await import('./decal-textures.js');
+  const result = await loadHeightTexture(picked);
+  if (!result) {
+    pushToast('Не удалось загрузить height', 'error');
+    return;
+  }
+
+  decalParams.heightPath = picked;
+  decalParams.heightFileName = getBasename(picked);
+  decalParams.heightTexture = result.texture;
+
+  pushLog(`[Decal] Height: ${decalParams.heightFileName}`);
+  pushToast(`Height: ${decalParams.heightFileName}`, 'success');
+}
+
+export function clearDecalHeight() {
+  decalParams.heightPath = '';
+  decalParams.heightFileName = '';
+  decalParams.heightTexture = null;
+  pushLog('[Decal] Height сброшен');
+}
+
+// Settings
 function normalizePos(p) {
   return {
     offsetX: typeof p.offsetX === 'number' ? p.offsetX : 0,
@@ -156,18 +366,23 @@ const DEFAULT_SETTINGS = {
   previewResolution: 2048,
   saveMode: 'ask',
   saveDir: '',
-
-  // Маски: одна юзерская маска (приоритет) ИЛИ набор из папки
   userMaskRust: '',
   userMaskDirt: '',
+  userMaskStreak: '',
+  userMaskScratch: '',
   folderMaskNamesRust: [],
   folderMaskNamesDirt: [],
-
-  // Заход 23: позиция юзерской маски (точечное размещение, без тайлинга)
+  folderMaskNamesStreak: [],
+  folderMaskNamesScratch: [],
   userMaskRustPos: { offsetX: 0, offsetY: 0, rotation: 0, scale: 1 },
   userMaskDirtPos: { offsetX: 0, offsetY: 0, rotation: 0, scale: 1 },
-
+  userMaskStreakPos: { offsetX: 0, offsetY: 0, rotation: 0, scale: 1 },
+  userMaskScratchPos: { offsetX: 0, offsetY: 0, rotation: 0, scale: 1 },
   masksInfoShown: false,
+  uiZoom: 1.0,
+  environment: 'neutral',
+  environmentIntensity: 0.85,
+  showHdrBackground: false,
 };
 
 function loadSettings() {
@@ -181,15 +396,25 @@ function loadSettings() {
       if (typeof parsed.saveDir === 'string') clean.saveDir = parsed.saveDir;
       if (typeof parsed.userMaskRust === 'string') clean.userMaskRust = parsed.userMaskRust;
       if (typeof parsed.userMaskDirt === 'string') clean.userMaskDirt = parsed.userMaskDirt;
+      if (typeof parsed.userMaskStreak === 'string') clean.userMaskStreak = parsed.userMaskStreak;
+      if (typeof parsed.userMaskScratch === 'string') clean.userMaskScratch = parsed.userMaskScratch;
       if (Array.isArray(parsed.folderMaskNamesRust)) clean.folderMaskNamesRust = parsed.folderMaskNamesRust;
       if (Array.isArray(parsed.folderMaskNamesDirt)) clean.folderMaskNamesDirt = parsed.folderMaskNamesDirt;
+      if (Array.isArray(parsed.folderMaskNamesStreak)) clean.folderMaskNamesStreak = parsed.folderMaskNamesStreak;
+      if (Array.isArray(parsed.folderMaskNamesScratch)) clean.folderMaskNamesScratch = parsed.folderMaskNamesScratch;
       if (typeof parsed.masksInfoShown === 'boolean') clean.masksInfoShown = parsed.masksInfoShown;
-      if (parsed.userMaskRustPos && typeof parsed.userMaskRustPos === 'object') {
-        clean.userMaskRustPos = normalizePos(parsed.userMaskRustPos);
+      if (typeof parsed.uiZoom === 'number' && parsed.uiZoom >= 0.5 && parsed.uiZoom <= 3.0) {
+        clean.uiZoom = parsed.uiZoom;
       }
-      if (parsed.userMaskDirtPos && typeof parsed.userMaskDirtPos === 'object') {
-        clean.userMaskDirtPos = normalizePos(parsed.userMaskDirtPos);
+      if (typeof parsed.environment === 'string') clean.environment = parsed.environment;
+      if (typeof parsed.environmentIntensity === 'number' && parsed.environmentIntensity >= 0 && parsed.environmentIntensity <= 2.0) {
+        clean.environmentIntensity = parsed.environmentIntensity;
       }
+      if (typeof parsed.showHdrBackground === 'boolean') clean.showHdrBackground = parsed.showHdrBackground;
+      if (parsed.userMaskRustPos) clean.userMaskRustPos = normalizePos(parsed.userMaskRustPos);
+      if (parsed.userMaskDirtPos) clean.userMaskDirtPos = normalizePos(parsed.userMaskDirtPos);
+      if (parsed.userMaskStreakPos) clean.userMaskStreakPos = normalizePos(parsed.userMaskStreakPos);
+      if (parsed.userMaskScratchPos) clean.userMaskScratchPos = normalizePos(parsed.userMaskScratchPos);
       return clean;
     }
   } catch (e) {}
@@ -206,11 +431,21 @@ export function saveSettings() {
       saveDir: settings.saveDir,
       userMaskRust: settings.userMaskRust,
       userMaskDirt: settings.userMaskDirt,
+      userMaskStreak: settings.userMaskStreak,
+      userMaskScratch: settings.userMaskScratch,
       folderMaskNamesRust: settings.folderMaskNamesRust,
       folderMaskNamesDirt: settings.folderMaskNamesDirt,
+      folderMaskNamesStreak: settings.folderMaskNamesStreak,
+      folderMaskNamesScratch: settings.folderMaskNamesScratch,
       userMaskRustPos: settings.userMaskRustPos,
       userMaskDirtPos: settings.userMaskDirtPos,
+      userMaskStreakPos: settings.userMaskStreakPos,
+      userMaskScratchPos: settings.userMaskScratchPos,
       masksInfoShown: settings.masksInfoShown,
+      uiZoom: settings.uiZoom,
+      environment: settings.environment,
+      environmentIntensity: settings.environmentIntensity,
+      showHdrBackground: settings.showHdrBackground,
     }));
   } catch (e) {}
 }
@@ -221,10 +456,20 @@ export function resetSettings() {
   settings.saveDir = DEFAULT_SETTINGS.saveDir;
   settings.userMaskRust = '';
   settings.userMaskDirt = '';
+  settings.userMaskStreak = '';
+  settings.userMaskScratch = '';
   settings.folderMaskNamesRust = [];
   settings.folderMaskNamesDirt = [];
+  settings.folderMaskNamesStreak = [];
+  settings.folderMaskNamesScratch = [];
   settings.userMaskRustPos = { offsetX: 0, offsetY: 0, rotation: 0, scale: 1 };
   settings.userMaskDirtPos = { offsetX: 0, offsetY: 0, rotation: 0, scale: 1 };
+  settings.userMaskStreakPos = { offsetX: 0, offsetY: 0, rotation: 0, scale: 1 };
+  settings.userMaskScratchPos = { offsetX: 0, offsetY: 0, rotation: 0, scale: 1 };
+  settings.uiZoom = 1.0;
+  settings.environment = 'neutral';
+  settings.environmentIntensity = 0.85;
+  settings.showHdrBackground = false;
   saveSettings();
 }
 
@@ -247,11 +492,9 @@ export const ui = $state({
   saveOpen: false,
   colorPickerOpen: false,
   maskColorPickerOpen: false,
-
   masksLibraryOpen: null,
   masksInfoOpen: false,
   pendingMasksLibrary: null,
-
   dragOver: false,
   previewBusy: false,
   conflicts: null,
@@ -263,9 +506,35 @@ export const ui = $state({
   generated: [],
   currentVariation: 0,
   generationTick: 0,
+  zoom: 1.0,
+  environment: 'neutral',
+  environmentIntensity: 0.85,
+  showHdrBackground: false,
 });
 
-// Helpers
+ui.zoom = settings.uiZoom || 1.0;
+ui.environment = settings.environment || 'neutral';
+ui.environmentIntensity = settings.environmentIntensity ?? 0.85;
+ui.showHdrBackground = settings.showHdrBackground ?? false;
+
+export function setEnvironment(id) {
+  ui.environment = id;
+  settings.environment = id;
+  saveSettings();
+}
+
+export function setEnvironmentIntensity(v) {
+  ui.environmentIntensity = v;
+  settings.environmentIntensity = v;
+  saveSettings();
+}
+
+export function setShowHdrBackground(v) {
+  ui.showHdrBackground = v;
+  settings.showHdrBackground = v;
+  saveSettings();
+}
+
 let toastId = 0;
 export function pushToast(message, type = 'info') {
   const id = ++toastId;
@@ -292,8 +561,7 @@ export function hideProgress(delay = 500) {
 
 export function randomSeed() { params.seed = Math.floor(Math.random() * 1e9); }
 
-// ═══ Логика масок (Rust и Dirt) ═══
-
+// Логика масок
 const ALLOWED_MASK_EXTS = ['png', 'jpg', 'jpeg'];
 
 export function getBasename(p) {
@@ -310,8 +578,6 @@ async function pickOneMaskFile() {
   return Array.isArray(picked) ? picked[0] : picked;
 }
 
-// ─── User mask (одна, приоритетная) ───
-
 export async function pickUserMask(preset) {
   const picked = await pickOneMaskFile();
   if (!picked) return;
@@ -325,6 +591,12 @@ export async function pickUserMask(preset) {
   if (preset === 'rust') {
     settings.userMaskRust = picked;
     settings.folderMaskNamesRust = [];
+  } else if (preset === 'streaks') {
+    settings.userMaskStreak = picked;
+    settings.folderMaskNamesStreak = [];
+  } else if (preset === 'scratches') {
+    settings.userMaskScratch = picked;
+    settings.folderMaskNamesScratch = [];
   } else {
     settings.userMaskDirt = picked;
     settings.folderMaskNamesDirt = [];
@@ -335,17 +607,19 @@ export async function pickUserMask(preset) {
 }
 
 export function clearUserMask(preset) {
-  if (preset === 'rust') {
-    settings.userMaskRust = '';
-  } else {
-    settings.userMaskDirt = '';
-  }
+  if (preset === 'rust') settings.userMaskRust = '';
+  else if (preset === 'streaks') settings.userMaskStreak = '';
+  else if (preset === 'scratches') settings.userMaskScratch = '';
+  else settings.userMaskDirt = '';
   saveSettings();
   pushLog(`[${preset}] Своя маска очищена`);
 }
 
 export function getUserMask(preset) {
-  return preset === 'rust' ? settings.userMaskRust : settings.userMaskDirt;
+  if (preset === 'rust') return settings.userMaskRust;
+  if (preset === 'streaks') return settings.userMaskStreak;
+  if (preset === 'scratches') return settings.userMaskScratch;
+  return settings.userMaskDirt;
 }
 
 export function getUserMaskBasename(preset) {
@@ -353,9 +627,11 @@ export function getUserMaskBasename(preset) {
   return p ? getBasename(p) : '';
 }
 
-// Заход 23: позиция юзерской маски
 export function getUserMaskPos(preset) {
-  return preset === 'rust' ? settings.userMaskRustPos : settings.userMaskDirtPos;
+  if (preset === 'rust') return settings.userMaskRustPos;
+  if (preset === 'streaks') return settings.userMaskStreakPos;
+  if (preset === 'scratches') return settings.userMaskScratchPos;
+  return settings.userMaskDirtPos;
 }
 
 export function resetUserMaskPos(preset) {
@@ -367,18 +643,18 @@ export function resetUserMaskPos(preset) {
   saveSettings();
 }
 
-// ─── Folder masks (галочки из папки) ───
-
 export function getFolderMaskNames(preset) {
-  return preset === 'rust' ? settings.folderMaskNamesRust : settings.folderMaskNamesDirt;
+  if (preset === 'rust') return settings.folderMaskNamesRust;
+  if (preset === 'streaks') return settings.folderMaskNamesStreak;
+  if (preset === 'scratches') return settings.folderMaskNamesScratch;
+  return settings.folderMaskNamesDirt;
 }
 
 function setFolderMaskNames(preset, names) {
-  if (preset === 'rust') {
-    settings.folderMaskNamesRust = names;
-  } else {
-    settings.folderMaskNamesDirt = names;
-  }
+  if (preset === 'rust') settings.folderMaskNamesRust = names;
+  else if (preset === 'streaks') settings.folderMaskNamesStreak = names;
+  else if (preset === 'scratches') settings.folderMaskNamesScratch = names;
+  else settings.folderMaskNamesDirt = names;
   saveSettings();
 }
 
@@ -398,11 +674,28 @@ export function selectAllFolderMasks(preset, allNames) {
   setFolderMaskNames(preset, [...allNames]);
 }
 
-// ─── Info-модалка ───
-
 export function markMasksInfoShown() {
   if (!settings.masksInfoShown) {
     settings.masksInfoShown = true;
     saveSettings();
   }
+}
+
+// Decal — рандом позиции и поворота
+export function randomDecalTransform(varSeed) {
+  const rand = (seed, step) => {
+    let s = seed >>> 0;
+    for (let i = 0; i < step; i++) {
+      s = (s * 1664525 + 1013904223) >>> 0;
+    }
+    return (s & 0xFFFFFF) / 16777216;
+  };
+  const r1 = rand(varSeed, 1);
+  const r2 = rand(varSeed, 2);
+  const r3 = rand(varSeed, 3);
+  return {
+    posX: (r1 - 0.5) * 0.6,
+    posY: (r2 - 0.5) * 0.6,
+    rotation: r3 * 360.0,
+  };
 }

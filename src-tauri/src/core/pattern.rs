@@ -131,7 +131,7 @@ pub fn scratches_pattern(w: u32, h: u32, seed: u32, params: ScratchParams) -> Gr
     img
 }
 
-// ============ Mask-based pattern (shared by Dirt and Rust) ============
+// ============ Mask-based pattern ============
 
 #[derive(Debug, Clone, Copy)]
 pub struct MaskPatternParams {
@@ -162,19 +162,18 @@ pub struct MaskInstance {
     pub rotation: f32,
     pub flip_x: f32,
     pub flip_y: f32,
-    // Заход 23: юзерская маска — без тайлинга
     #[serde(default = "default_tileable")]
     pub tileable: bool,
 }
 
-/// Общая билинейная выборка. u, v ∈ [0, 1] (вызывающий сам гарантирует).
 #[inline]
 fn sample_mask_bilinear(mask: &RgbImage, u: f32, v: f32) -> f32 {
     let (mw, mh) = mask.dimensions();
+    if mw == 0 || mh == 0 { return 0.0; }
     let x = u * mw as f32;
     let y = v * mh as f32;
-    let x0 = x.floor() as u32;
-    let y0 = y.floor() as u32;
+    let x0 = (x.floor() as u32).min(mw - 1);
+    let y0 = (y.floor() as u32).min(mh - 1);
     let x1 = (x0 + 1).min(mw - 1);
     let y1 = (y0 + 1).min(mh - 1);
     let fx = x - x0 as f32;
@@ -190,8 +189,6 @@ fn sample_mask_bilinear(mask: &RgbImage, u: f32, v: f32) -> f32 {
     top * (1.0 - fy) + bot * fy
 }
 
-/// Tileable-выборка: wrap по [0,1). Границы не обрываются.
-/// КРИТИЧНО: rem_euclid — не менять. Иначе обрывы на границах.
 #[inline]
 fn sample_mask_wrapped(mask: &RgbImage, u: f32, v: f32) -> f32 {
     let (mw, mh) = mask.dimensions();
@@ -201,8 +198,6 @@ fn sample_mask_wrapped(mask: &RgbImage, u: f32, v: f32) -> f32 {
     sample_mask_bilinear(mask, u, v)
 }
 
-/// Заход 23: не-tileable выборка для юзерской маски.
-/// Вне [0,1] → 0.0. Пятно не дублируется.
 #[inline]
 fn sample_mask_clamped(mask: &RgbImage, u: f32, v: f32) -> f32 {
     let (mw, mh) = mask.dimensions();
@@ -214,7 +209,7 @@ fn sample_mask_clamped(mask: &RgbImage, u: f32, v: f32) -> f32 {
 #[inline]
 fn sample_instance(mask: &RgbImage, px: f32, py: f32, wf: f32, hf: f32, inst: &MaskInstance) -> f32 {
     let u = px / wf;
-    let v = 1.0 - (py / hf);   // ← ИНВЕРСИЯ Y (Three.js Y-up vs image Y-down)
+    let v = 1.0 - (py / hf);
 
     let cu = u - 0.5 - inst.offset_x;
     let cv = v - 0.5 - inst.offset_y;
@@ -271,9 +266,6 @@ pub fn mask_pattern(
 
     let deform_amt = p.deform.clamp(0.0, 1.0);
     let warp_scale = wf.min(hf) * 0.1;
-
-    // Совпадение с шейдером: snoise2(uv * 3.0) — 3 цикла на тайл.
-    // В шейдере uv ∈ [0..1], здесь — пиксели, переводим в UV делением на wf/hf.
     let deform_freq = 3.0;
 
     let threshold = p.threshold.clamp(0.0, 1.0);
@@ -286,14 +278,10 @@ pub fn mask_pattern(
             let py = y as f32;
 
             let (wx, wy) = if deform_amt > 0.01 {
-                // UV [0..1]. vUv в Three.js Y-up, py в PNG Y-down.
-                // Y-flip, иначе deform расходится с шейдером.
                 let u = px / wf;
                 let v = 1.0 - (py / hf);
-                // Точный порт GLSL snoise2 — совпадает с шейдером
                 let nx = snoise2(u * deform_freq, v * deform_freq);
                 let ny = snoise2(u * deform_freq + 100.0, v * deform_freq + 100.0);
-                // Сдвиг применяется в пикселях, Y-координата тоже инвертируется обратно
                 (px + nx * warp_scale * deform_amt, py - ny * warp_scale * deform_amt)
             } else {
                 (px, py)
@@ -368,36 +356,260 @@ pub fn mask_pattern(
     MaskPatternMasks { core, body, edge, height }
 }
 
-// ============ Backward-compatible wrappers ============
+// ============ Streaks procedural (SDF-потёки) ============
 
 #[derive(Debug, Clone, Copy)]
-pub struct DirtParams {
-    pub density: f32,
-    pub scale: f32,
-    pub sharpness: f32,
-    pub detail: f32,
-}
-
-impl Default for DirtParams {
-    fn default() -> Self {
-        Self { density: 0.5, scale: 2.0, sharpness: 0.6, detail: 0.6 }
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct RustParams {
+pub struct StreaksProceduralParams {
     pub count: f32,
-    pub scale: f32,
-    pub deform: f32,
+    pub size: f32,
+    pub stretch: f32,
     pub threshold: f32,
     pub sharpness: f32,
+    pub waviness: f32,
+    pub pos_x: f32,
+    pub pos_y: f32,
+    pub rotation: f32,
+    pub scale: f32,
+    pub tileable: bool,
 }
 
-impl Default for RustParams {
+impl Default for StreaksProceduralParams {
     fn default() -> Self {
-        Self { count: 3.0, scale: 1.0, deform: 0.5, threshold: 0.5, sharpness: 0.5 }
+        Self {
+            count: 25.0,
+            size: 0.08,
+            stretch: 1.0,
+            threshold: 0.5,
+            sharpness: 0.5,
+            waviness: 0.25,
+            pos_x: 0.0,
+            pos_y: 0.0,
+            rotation: 0.0,
+            scale: 1.0,
+            tileable: true,
+        }
     }
 }
+
+pub struct StreaksProceduralMasks {
+    pub body: GrayImage,
+    pub height: GrayImage,
+}
+
+#[inline]
+fn lcg_splat(s: &mut u32) -> f32 {
+    *s = s.wrapping_mul(1664525).wrapping_add(1013904223);
+    ((*s >> 8) & 0xFFFFFF) as f32 / 16777215.0
+}
+
+#[inline]
+fn sd_segment(px: f32, py: f32, ax: f32, ay: f32, bx: f32, by: f32) -> f32 {
+    let pax = px - ax;
+    let pay = py - ay;
+    let bax = bx - ax;
+    let bay = by - ay;
+    let h = ((pax * bax + pay * bay) / (bax * bax + bay * bay).max(0.0001)).clamp(0.0, 1.0);
+    let dx = pax - bax * h;
+    let dy = pay - bay * h;
+    (dx * dx + dy * dy).sqrt()
+}
+
+/// Профиль «классический потёк»: голова → шейка → шлейф → хвост.
+/// t=0   → голова (head_r)
+/// t=0.15→ шейка (head_r * 0.55)
+/// t=0.85→ почти хвост (head_r * 0.48)
+/// t=1.0 → хвост (tail_r)
+#[inline]
+fn drip_radius(head_r: f32, tail_r: f32, t: f32) -> f32 {
+    let t1 = 0.15_f32;
+    let t2 = 0.85_f32;
+    if t < t1 {
+        let k = t / t1;
+        head_r * (1.0 - k) + (head_r * 0.55) * k
+    } else if t < t2 {
+        let k = (t - t1) / (t2 - t1);
+        (head_r * 0.55) * (1.0 - k) + (head_r * 0.48) * k
+    } else {
+        let k = (t - t2) / (1.0 - t2);
+        (head_r * 0.48) * (1.0 - k) + tail_r * k
+    }
+}
+
+// Рабочий хэш — тот же, что в GLSL. БЕЗ seed.
+#[inline]
+fn hash2i_streaks(x: i32, y: i32) -> f32 {
+    let mut h = (x.wrapping_mul(374761393).wrapping_add(y.wrapping_mul(668265263))) as u32;
+    h = (h ^ (h >> 13)).wrapping_mul(1274126177);
+    ((h ^ (h >> 16)) & 0xFFFFFF) as f32 / 16777215.0
+}
+
+// Value noise — рабочий. БЕЗ seed.
+#[inline]
+fn value_noise_streaks(x: f32, y: f32) -> f32 {
+    let x0 = x.floor() as i32;
+    let y0 = y.floor() as i32;
+    let fx = x - x0 as f32;
+    let fy = y - y0 as f32;
+    let sx = fx * fx * (3.0 - 2.0 * fx);
+    let sy = fy * fy * (3.0 - 2.0 * fy);
+
+    let p00 = hash2i_streaks(x0, y0);
+    let p10 = hash2i_streaks(x0 + 1, y0);
+    let p01 = hash2i_streaks(x0, y0 + 1);
+    let p11 = hash2i_streaks(x0 + 1, y0 + 1);
+
+    let top = p00 * (1.0 - sx) + p10 * sx;
+    let bot = p01 * (1.0 - sx) + p11 * sx;
+    top * (1.0 - sy) + bot * sy
+}
+
+/// Профиль радиуса потёка по нормализованной высоте t.
+/// t = 0.0 (голова) → head_r
+/// t = 0.2         → head_r * 0.75 (шейка)
+/// t = 0.6         → head_r * 0.55 (середина)
+/// t = 1.0         → tail_r
+#[inline]
+fn drip_profile(head_r: f32, tail_r: f32, t: f32) -> f32 {
+    let t = t.clamp(0.0, 1.0);
+    let r_head = head_r;
+    let r_neck = head_r * 0.75;
+    let r_mid  = head_r * 0.55;
+    let r_tail = tail_r;
+    if t < 0.20 {
+        let k = smoothstep(0.0, 0.20, t);
+        r_head + (r_neck - r_head) * k
+    } else if t < 0.60 {
+        let k = smoothstep(0.20, 0.60, t);
+        r_neck + (r_mid - r_neck) * k
+    } else {
+        let k = smoothstep(0.60, 1.0, t);
+        r_mid + (r_tail - r_mid) * k
+    }
+}
+
+#[inline]
+fn value_noise(u: f32, v: f32, grid: f32, seed: u32) -> f32 {
+    let x = u * grid;
+    let y = v * grid;
+    let x0 = x.floor() as i32;
+    let y0 = y.floor() as i32;
+    let fx = x - x0 as f32;
+    let fy = y - y0 as f32;
+
+    let get = |ix: i32, iy: i32| -> f32 {
+        let mut s = seed
+            .wrapping_add((ix as u32).wrapping_mul(73856093))
+            .wrapping_add((iy as u32).wrapping_mul(19349663));
+        lcg_splat(&mut s)
+    };
+
+    let p00 = get(x0, y0);
+    let p10 = get(x0 + 1, y0);
+    let p01 = get(x0, y0 + 1);
+    let p11 = get(x0 + 1, y0 + 1);
+
+    let sx = fx * fx * (3.0 - 2.0 * fx);
+    let sy = fy * fy * (3.0 - 2.0 * fy);
+
+    let top = p00 * (1.0 - sx) + p10 * sx;
+    let bot = p01 * (1.0 - sx) + p11 * sx;
+    top * (1.0 - sy) + bot * sy
+}
+
+pub fn streaks_procedural_pattern(w: u32, h: u32, var_seed: u32, p: StreaksProceduralParams) -> StreaksProceduralMasks {
+    let wf = w as f32;
+    let hf = h as f32;
+
+    let count = p.count.clamp(5.0, 100.0);
+    let size = p.size.clamp(0.001, 0.10);
+    let stretch = p.stretch.clamp(1.0, 20.0);
+    let threshold = p.threshold.clamp(-0.1, 1.0);
+    let sharpness = p.sharpness.clamp(-1.0, 1.0);
+    let scale = p.scale.clamp(0.1, 5.0);
+    let tileable = p.tileable;
+
+    let rot_rad = p.rotation.to_radians();
+    let cos_r = (-rot_rad).cos();
+    let sin_r = (-rot_rad).sin();
+
+    // ─── Per-variation модуляция (форма та же, узор другой) ───
+    let vi = (var_seed % 1000) as f32 * 0.001;
+
+    // Частота: ±15%
+    let freq_scale = (0.3 + (count / 100.0) * 2.7) * (0.85 + vi * 0.30);
+    let base_freq = (1.0 / size.max(0.001)) * 0.5 * freq_scale;
+    let octaves = (3.0 + (count / 25.0).min(5.0)) as u32;
+    // Порог: ±10%
+    let thr_eff = threshold * 0.35 * (0.9 + vi * 0.2);
+
+    // Сдвиг UV: 0..10 единиц.
+    let offx = ((var_seed % 100) as f32) * 0.1;
+    let offy = (((var_seed / 100) % 100) as f32) * 0.1;
+
+    let body_data: Vec<u8> = (0..h).into_par_iter().flat_map(|y| {
+        let mut row = Vec::with_capacity(w as usize);
+        for x in 0..w {
+            let mut u = (x as f32 + 0.5) / wf;
+            let mut v = 1.0 - (y as f32 + 0.5) / hf;
+
+            u -= p.pos_x;
+            v -= p.pos_y;
+
+            let cu = u - 0.5;
+            let cv = v - 0.5;
+            u = cu * cos_r - cv * sin_r + 0.5;
+            v = cu * sin_r + cv * cos_r + 0.5;
+
+            if tileable {
+                u = u.rem_euclid(1.0);
+                v = v.rem_euclid(1.0);
+            } else {
+                if u < 0.0 || u > 1.0 || v < 0.0 || v > 1.0 {
+                    row.push(0);
+                    continue;
+                }
+            }
+
+            // Растяжение по Y + сдвиг.
+            let u_s = u + offx;
+            let v_s = v / stretch + offy;
+
+            let mut sum = 0.0_f32;
+            let mut amp = 0.5_f32;
+            let mut freq = base_freq / scale;
+            let mut total_amp = 0.0_f32;
+            for _ in 0..octaves {
+                let n = value_noise_streaks(u_s * freq, v_s * freq);
+                sum += n * amp;
+                total_amp += amp;
+                amp *= 0.5;
+                freq *= 2.0;
+            }
+            let n_final = if total_amp > 0.0 { sum / total_amp } else { 0.0 };
+
+            let shifted = (n_final - thr_eff).clamp(0.0, 1.0);
+            let window = 0.5 - sharpness * 0.4;
+            let out = smoothstep(0.5 - window * 0.5, 0.5 + window * 0.5, shifted);
+
+            row.push((out.clamp(0.0, 1.0) * 255.0) as u8);
+        }
+        row
+    }).collect();
+
+    let mut body = GrayImage::new(w, h);
+    body.copy_from_slice(&body_data);
+
+    let height_data: Vec<u8> = body_data.iter().map(|&b| {
+        let v = b as f32 / 255.0;
+        ((0.5 + v * 0.5) * 255.0).clamp(0.0, 255.0) as u8
+    }).collect();
+    let mut height = GrayImage::new(w, h);
+    height.copy_from_slice(&height_data);
+
+    StreaksProceduralMasks { body, height }
+}
+
+// ============ Backward-compatible wrappers ============
 
 pub struct DirtMasks {
     pub flat: GrayImage,

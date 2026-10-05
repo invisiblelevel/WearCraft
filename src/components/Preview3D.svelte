@@ -1,18 +1,20 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import * as THREE from 'three';
-  import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
   import {
     Circle, Square, Cylinder, Torus, ChevronLeft, ChevronRight, Loader2, X,
-    Move3d, RotateCcw
+    Move3d, RotateCcw, Dices
   } from '@lucide/svelte';
   import { t } from '../i18n.svelte.js';
   import {
     viewer, pbr, ui, params, maskParams,
-    scratchParams, dirtParams, rustParams, settings,
+    scratchParams, dirtParams, rustParams, streakParams,
+    decalParams,
+    settings,
     pushLog, pushToast
   } from '../lib/stores.svelte.js';
   import { applyPBR } from '../lib/pbr-loader.js';
+  import { onGenerateWear } from '../lib/actions.svelte.js';
   import { loadVariation } from '../lib/variation-loader.js';
   import {
     applyMaskPreview,
@@ -24,9 +26,19 @@
   import { registerDropZone } from '../lib/drag-drop.js';
   import { createRustMaterial, updateRustUniforms } from '../lib/rust-shader.js';
   import { createDirtMaterial, updateDirtUniforms } from '../lib/dirt-shader.js';
+  import { createStreaksMaterial, updateStreaksUniforms } from '../lib/streaks-shader.js';
+  import { createScratchesMaterial, updateScratchesUniforms } from '../lib/scratches-shader.js';
+  import { createDecalMaterial, updateDecalUniforms } from '../lib/decal-shader.js';
   import { loadAllMaskTextures } from '../lib/mask-textures.js';
   import { generateInstances, generateFixedInstance } from '../lib/instances.js';
   import { resolveMaskPaths, maskPathsKey } from '../lib/mask-source.js';
+  import { applyEnvironment, preloadRest } from '../lib/environments.js';
+
+  function seedAngle(varSeed) {
+    let s = varSeed >>> 0;
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return ((s & 0xFFFFFF) / 16777216) * Math.PI * 2;
+  }
 
   let canvasEl = $state();
   let renderer, scene, camera, mesh, raf;
@@ -36,6 +48,23 @@
   let camDist = 2.6;
 
   let showTiling = $state(false);
+  let hasPbr = $derived(Object.keys(pbr.textures).length > 0);
+
+  // Логика «есть что генерировать»
+  let canGenerate = $derived(
+    hasPbr && (
+      (params.preset === 'custom' && maskParams.enabled) ||
+      (params.preset === 'decal' && decalParams.enabled) ||
+      (params.preset !== 'custom' && params.preset !== 'decal')
+    )
+  );
+
+  let generateLabel = $derived(
+    !hasPbr ? t('rail.loadpbr') :
+    (params.preset === 'custom' && !maskParams.enabled) ? t('rail.generate_need_mask') :
+    (params.preset === 'decal' && !decalParams.enabled) ? t('rail.generate_need_decal') :
+    t('rail.generate')
+  );
 
   function resetTiling() {
     pbr.repeatX = 1.0;
@@ -51,7 +80,12 @@
         shaderMaterial = null;
         lastPresetKey = '';
       }
-      if (params.preset === 'rust' || params.preset === 'dirt') {
+      if (decalMaterial) {
+        decalMaterial = null;
+      }
+      if (params.preset === 'decal') {
+        queueMicrotask(() => applyDecalMaterial());
+      } else if (params.preset === 'rust' || params.preset === 'dirt' || params.preset === 'streaks' || params.preset === 'scratches') {
         queueMicrotask(() => applyShaderMaterial());
       }
     };
@@ -66,7 +100,7 @@
     cleanupThree();
   });
 
-  function initThree() {
+  async function initThree() {
     if (!canvasEl) return;
     const w = canvasEl.clientWidth;
     const h = canvasEl.clientHeight;
@@ -85,13 +119,9 @@
 
     scene = new THREE.Scene();
 
-    const pmrem = new THREE.PMREMGenerator(renderer);
-    pmrem.compileEquirectangularShader();
-    const roomEnv = new RoomEnvironment();
-    const envMap = pmrem.fromScene(roomEnv, 0.04);
-    scene.environment = envMap.texture;
-    scene.environmentIntensity = 0.85;
-    pmrem.dispose();
+    // ═══ Окружение (HDR) ═══
+    // Не блокируем — грузим асинхронно. Пока грузится — серый фон.
+    scene.background = new THREE.Color(0x1a1a1a);
 
     camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 100);
     updateCamera();
@@ -143,7 +173,25 @@
     });
     ro.observe(canvasEl);
     canvasEl._ro = ro;
+
+    // Первый рендер — до него HDR не грузим
     animate();
+
+    // ═══ Загружаем окружение асинхронно ═══
+    try {
+      await applyEnvironment(
+        renderer, scene,
+        ui.environment || 'neutral',
+        ui.environmentIntensity ?? 0.85,
+        ui.showHdrBackground ?? false
+      );
+      pushLog(`[Env] Окружение: ${ui.environment}`);
+      // Прогреваем остальные HDR в фоне
+      preloadRest(renderer, ui.environment || 'neutral');
+    } catch (e) {
+      console.error('[Env] Ошибка загрузки HDR:', e);
+      pushLog(`[Env] Не удалось загрузить окружение: ${e}`);
+    }
   }
 
   function createGeometry(kind) {
@@ -271,7 +319,7 @@
     pbr.showEdgeMode; pbr.repeatX; pbr.repeatY; pbr.rotation;
     const v = ui.currentVariation;
     if (!renderer) return;
-    if (v === 0 && params.preset !== 'rust' && params.preset !== 'dirt') applyPBR();
+    if (v === 0 && params.preset === 'custom') applyPBR();
     if (maskParams.enabled && pbr.textures?.albedo) {
       queueMicrotask(() => applyMaskPreview(scene));
     }
@@ -322,6 +370,25 @@
     });
   });
 
+  // ═══ Окружение — реакция на смену ═══
+  $effect(() => {
+    const id = ui.environment;
+    const intensity = ui.environmentIntensity;
+    const bg = ui.showHdrBackground;
+
+    if (!renderer || !scene) return;
+
+    queueMicrotask(async () => {
+      try {
+        await applyEnvironment(renderer, scene, id, intensity, bg);
+        pushLog(`[Env] Окружение: ${id}, интенсивность: ${(intensity * 100).toFixed(0)}%${bg ? ' + фон' : ''}`);
+      } catch (e) {
+        console.error('[Env] Ошибка:', e);
+      }
+    });
+  });
+
+  // ═══ Shader material (rust/dirt/streaks/scratches) ═══
   let shaderMaterial = null;
   let loadedMaskTextures = [];
   let lastMaskPathsKey = '';
@@ -334,20 +401,34 @@
     if (targets.length === 0) return;
 
     const preset = params.preset;
-    if (preset !== 'rust' && preset !== 'dirt') return;
+    if (preset !== 'rust' && preset !== 'dirt' && preset !== 'streaks' && preset !== 'scratches') return;
 
-    const paths = await resolveMaskPaths(preset);
-    const pathsKey = maskPathsKey(preset, paths);
+    if (preset === 'scratches' && scratchParams.procedural) return;
 
-    if (!shaderMaterial || lastPresetKey !== preset) {
-      const createFn = preset === 'rust' ? createRustMaterial : createDirtMaterial;
+    const streaksProcedural = (preset === 'streaks' && streakParams.procedural);
+
+    let paths = [];
+    let pathsKey = '';
+    if (!streaksProcedural) {
+      paths = await resolveMaskPaths(preset);
+      pathsKey = maskPathsKey(preset, paths);
+    }
+
+    const presetKey = `${preset}${streaksProcedural ? '_proc' : '_mask'}`;
+    if (!shaderMaterial || lastPresetKey !== presetKey) {
+      let createFn;
+      if (preset === 'streaks') createFn = createStreaksMaterial;
+      else if (preset === 'scratches') createFn = createScratchesMaterial;
+      else if (preset === 'rust') createFn = createRustMaterial;
+      else createFn = createDirtMaterial;
+
       shaderMaterial = createFn(
         pbr.textures.albedo || null,
         pbr.textures.normal || null,
         pbr.textures.roughness || null
       );
       for (const t of targets) t.material = shaderMaterial;
-      lastPresetKey = preset;
+      lastPresetKey = presetKey;
       loadedMaskTextures = [];
       lastMaskPathsKey = '';
     } else {
@@ -356,34 +437,57 @@
       }
     }
 
-    if (pathsKey !== lastMaskPathsKey) {
-      lastMaskPathsKey = pathsKey;
-      loadedMaskTextures = await loadAllMaskTextures(paths);
+    let transforms = [];
+    if (!streaksProcedural) {
+      if (pathsKey !== lastMaskPathsKey) {
+        lastMaskPathsKey = pathsKey;
+        loadedMaskTextures = await loadAllMaskTextures(paths);
+      }
+
+      const isRust = preset === 'rust';
+      const isScratch = preset === 'scratches';
+      const userMask = isRust ? settings.userMaskRust
+                     : (preset === 'streaks') ? settings.userMaskStreak
+                     : isScratch ? settings.userMaskScratch
+                     : settings.userMaskDirt;
+
+      if (userMask) {
+        const pos = isRust ? settings.userMaskRustPos
+                  : (preset === 'streaks') ? settings.userMaskStreakPos
+                  : isScratch ? settings.userMaskScratchPos
+                  : settings.userMaskDirtPos;
+        transforms = [generateFixedInstance(pos)];
+      } else {
+        const p = isRust ? rustParams
+                : (preset === 'streaks') ? streakParams
+                : isScratch ? scratchParams
+                : dirtParams;
+        const count = Math.min(Math.round(p.count || 3), 8);
+        const scale = (preset === 'streaks') ? (p.maskScale || 1)
+                    : isScratch ? (p.maskScale || 1)
+                    : (p.scale || 1);
+        const previewVarSeed = ((params.seed || 1) + 1 * 7919) >>> 0;
+        const maskCount = Math.max(1, paths.length);
+
+        let useRandomRot = p.randomRotation;
+        let globalRot = p.rotation * Math.PI / 180;
+        if (preset === 'streaks') {
+          useRandomRot = false;
+          globalRot = p.randomRotation ? seedAngle(previewVarSeed) : p.rotation * Math.PI / 180;
+        }
+
+        transforms = generateInstances(previewVarSeed, count, scale, maskCount, {
+          globalPosX: p.posX,
+          globalPosY: p.posY,
+          globalRotation: globalRot,
+          randomRotation: useRandomRot,
+          randomFlip: (preset === 'streaks') ? false : true,
+          tileable: !p.disableTiling,
+        });
+      }
     }
 
-    const isRust = preset === 'rust';
-    const userMask = isRust ? settings.userMaskRust : settings.userMaskDirt;
-    let transforms;
-
-    if (userMask) {
-      // Заход 23: юзерская маска — фиксированный instance из UI
-      const pos = isRust ? settings.userMaskRustPos : settings.userMaskDirtPos;
-      transforms = [generateFixedInstance(pos)];
-    } else {
-      const count = Math.min(Math.round(isRust ? (rustParams.count || 3) : (dirtParams.count || 3)), 8);
-      const scale = isRust ? (rustParams.scale || 1) : (dirtParams.scale || 1);
-      const previewVarSeed = ((params.seed || 1) + 1 * 7919) >>> 0;
-      const maskCount = Math.max(1, paths.length);
-      const p = isRust ? rustParams : dirtParams;
-      transforms = generateInstances(previewVarSeed, count, scale, maskCount, {
-        globalPosX: p.posX,
-        globalPosY: p.posY,
-        globalRotation: p.rotation * Math.PI / 180,
-        randomRotation: p.randomRotation,
-      });
-    }
-
-    if (isRust) {
+    if (preset === 'rust') {
       updateRustUniforms(shaderMaterial, {
         masks: loadedMaskTextures,
         transforms,
@@ -392,6 +496,51 @@
         deform:    rustParams.deform,
         volume:    rustParams.volume,
         amount:    (params.amount || 70) / 100.0,
+        repeatX:   pbr.repeatX,
+        repeatY:   pbr.repeatY,
+        rotationDeg: pbr.rotation,
+        albedoTex:  pbr.textures.albedo || null,
+        normalTex:  pbr.textures.normal || null,
+        roughTex:   pbr.textures.roughness || null,
+      });
+    } else if (preset === 'streaks') {
+      updateStreaksUniforms(shaderMaterial, {
+        procedural: streakParams.procedural,
+        threshold: streakParams.threshold,
+        sharpness: streakParams.sharpness,
+        thickness: streakParams.thickness,
+        amount:    (params.amount || 65) / 100.0,
+        color:     streakParams.color,
+        count:     streakParams.count,
+        size:      streakParams.size,
+        stretch:   streakParams.stretch,
+        waviness:  streakParams.waviness,
+        procScale: streakParams.procScale,
+        posX:      streakParams.posX,
+        posY:      streakParams.posY,
+        rotation:  streakParams.rotation,
+        seed:      params.seed || 1,
+        disableTiling: streakParams.disableTiling,
+        masks:     loadedMaskTextures,
+        transforms,
+        deform:    streakParams.deform,
+        repeatX:   pbr.repeatX,
+        repeatY:   pbr.repeatY,
+        rotationDeg: pbr.rotation,
+        albedoTex:  pbr.textures.albedo || null,
+        normalTex:  pbr.textures.normal || null,
+        roughTex:   pbr.textures.roughness || null,
+      });
+    } else if (preset === 'scratches') {
+      updateScratchesUniforms(shaderMaterial, {
+        masks: loadedMaskTextures,
+        transforms,
+        threshold: scratchParams.threshold,
+        sharpness: scratchParams.sharpness,
+        deform:    scratchParams.deform,
+        thickness: scratchParams.maskThickness,
+        amount:    (params.amount || 50) / 100.0,
+        color:     scratchParams.color,
         repeatX:   pbr.repeatX,
         repeatY:   pbr.repeatY,
         rotationDeg: pbr.rotation,
@@ -419,13 +568,61 @@
     }
   }
 
+  // ═══ Decal material ═══
+  let decalMaterial = null;
+
+  function applyDecalMaterial() {
+    if (ui.currentVariation !== 0) return;
+    if (params.preset !== 'decal') return;
+
+    const targets = getActiveMeshes();
+    if (targets.length === 0) return;
+
+    if (!decalMaterial) {
+      decalMaterial = createDecalMaterial(
+        pbr.textures.albedo || null,
+        pbr.textures.normal || null,
+        pbr.textures.roughness || null
+      );
+      shaderMaterial = null;
+      lastPresetKey = '';
+    }
+    for (const t of targets) {
+      if (t.material !== decalMaterial) t.material = decalMaterial;
+    }
+
+    let scaleY = decalParams.scale;
+    if (decalParams.keepAspect && decalParams.aspectW > 0) {
+      scaleY = decalParams.scale * (decalParams.aspectH / decalParams.aspectW);
+    }
+
+    updateDecalUniforms(decalMaterial, {
+      decalTex:  decalParams.texture,
+      heightTex: decalParams.heightTexture,
+      posX:      decalParams.posX,
+      posY:      decalParams.posY,
+      scale:     decalParams.scale,
+      scaleY,
+      rotationDeg: decalParams.rotation,
+      opacity:   decalParams.opacity,
+      amountAlbedo:    decalParams.affectAlbedo    ? 1.0 : 0.0,
+      amountRough:     decalParams.affectRoughness ? 1.0 : 0.0,
+      amountNormal:    decalParams.affectNormal    ? 1.0 : 0.0,
+      heightIntensity: decalParams.heightIntensity,
+      tileEdge:        decalParams.tileEdge,
+      albedoTex:  pbr.textures.albedo || null,
+      normalTex:  pbr.textures.normal || null,
+      roughTex:   pbr.textures.roughness || null,
+    });
+  }
+
   function revertToStandardMaterial() {
     const targets = getActiveMeshes();
     if (targets.length === 0) return;
 
     let reverted = false;
     for (const t of targets) {
-      if (t.material === shaderMaterial) {
+      if (t.material === shaderMaterial || t.material === decalMaterial) {
         t.material = new THREE.MeshStandardMaterial({
           color: 0x9a9a9a, roughness: 0.7, metalness: 0.05,
         });
@@ -434,6 +631,7 @@
     }
     if (reverted) {
       shaderMaterial = null;
+      decalMaterial = null;
       lastPresetKey = '';
       if (Object.keys(pbr.textures).length > 0) applyPBR();
     }
@@ -447,7 +645,9 @@
     if (v !== 0) return;
     if (Object.keys(pbr.textures).length === 0) return;
 
-    if (preset === 'rust' || preset === 'dirt') {
+    if (preset === 'decal') {
+      queueMicrotask(() => applyDecalMaterial());
+    } else if (preset === 'rust' || preset === 'dirt' || preset === 'streaks' || preset === 'scratches') {
       queueMicrotask(() => applyShaderMaterial());
     } else {
       queueMicrotask(() => revertToStandardMaterial());
@@ -455,16 +655,64 @@
   });
 
   $effect(() => {
+    decalParams.enabled;
+    decalParams.path;
+    decalParams.heightPath;
+    decalParams.posX;
+    decalParams.posY;
+    decalParams.scale;
+    decalParams.rotation;
+    decalParams.keepAspect;
+    decalParams.opacity;
+    decalParams.randomPosition;
+    decalParams.randomRotation;
+    decalParams.tileEdge;
+    decalParams.affectAlbedo;
+    decalParams.affectRoughness;
+    decalParams.affectNormal;
+    decalParams.heightIntensity;
+    decalParams.aspectW;
+    decalParams.aspectH;
+    pbr.textures.albedo; pbr.textures.normal; pbr.textures.roughness;
+
+    if (!renderer) return;
+    if (params.preset !== 'decal') return;
+    if (ui.currentVariation !== 0) return;
+    if (Object.keys(pbr.textures).length === 0) return;
+
+    queueMicrotask(() => applyDecalMaterial());
+  });
+
+  $effect(() => {
     params.preset;
     params.amount; params.seed;
+
+    scratchParams.procedural;
+    scratchParams.density; scratchParams.length; scratchParams.thickness;
+    scratchParams.waviness; scratchParams.branches; scratchParams.clusters;
+    scratchParams.normalEnabled; scratchParams.depth;
+    scratchParams.realistic; scratchParams.rimHighlight;
+    scratchParams.count; scratchParams.maskScale; scratchParams.deform;
+    scratchParams.threshold; scratchParams.sharpness;
+    scratchParams.color[0]; scratchParams.color[1]; scratchParams.color[2];
+    scratchParams.maskThickness; scratchParams.maskRimHighlight; scratchParams.maskNormalEnabled;
+    scratchParams.disableTiling;
+    scratchParams.posX; scratchParams.posY; scratchParams.rotation; scratchParams.randomRotation;
+    settings.userMaskScratch;
+    settings.folderMaskNamesScratch.length;
+    settings.folderMaskNamesScratch.join(',');
+    settings.userMaskScratchPos.offsetX;
+    settings.userMaskScratchPos.offsetY;
+    settings.userMaskScratchPos.rotation;
+    settings.userMaskScratchPos.scale;
 
     rustParams.count; rustParams.scale; rustParams.deform;
     rustParams.threshold; rustParams.sharpness; rustParams.volume;
     rustParams.posX; rustParams.posY; rustParams.rotation; rustParams.randomRotation;
+    rustParams.disableTiling;
     settings.userMaskRust;
     settings.folderMaskNamesRust.length;
     settings.folderMaskNamesRust.join(',');
-    // Заход 23: позиция юзерской маски
     settings.userMaskRustPos.offsetX;
     settings.userMaskRustPos.offsetY;
     settings.userMaskRustPos.rotation;
@@ -474,6 +722,7 @@
     dirtParams.threshold; dirtParams.sharpness; dirtParams.thickness;
     dirtParams.color[0]; dirtParams.color[1]; dirtParams.color[2];
     dirtParams.posX; dirtParams.posY; dirtParams.rotation; dirtParams.randomRotation;
+    dirtParams.disableTiling;
     settings.userMaskDirt;
     settings.folderMaskNamesDirt.length;
     settings.folderMaskNamesDirt.join(',');
@@ -482,6 +731,25 @@
     settings.userMaskDirtPos.rotation;
     settings.userMaskDirtPos.scale;
 
+    streakParams.procedural;
+    streakParams.count;
+    streakParams.threshold; streakParams.sharpness; streakParams.thickness;
+    streakParams.color[0]; streakParams.color[1]; streakParams.color[2];
+    streakParams.size; streakParams.stretch;
+    streakParams.waviness;
+    streakParams.posX; streakParams.posY; streakParams.rotation;
+    streakParams.procScale;
+    streakParams.maskScale; streakParams.deform;
+    streakParams.randomRotation;
+    streakParams.disableTiling;
+    settings.userMaskStreak;
+    settings.folderMaskNamesStreak.length;
+    settings.folderMaskNamesStreak.join(',');
+    settings.userMaskStreakPos.offsetX;
+    settings.userMaskStreakPos.offsetY;
+    settings.userMaskStreakPos.rotation;
+    settings.userMaskStreakPos.scale;
+
     pbr.repeatX; pbr.repeatY; pbr.rotation;
     pbr.textures.albedo; pbr.textures.normal; pbr.textures.roughness;
 
@@ -489,7 +757,7 @@
     if (ui.currentVariation !== 0) return;
 
     const preset = params.preset;
-    if (preset !== 'rust' && preset !== 'dirt') return;
+    if (preset !== 'rust' && preset !== 'dirt' && preset !== 'streaks' && preset !== 'scratches') return;
     if (!shaderMaterial) return;
 
     queueMicrotask(() => applyShaderMaterial());
@@ -546,6 +814,16 @@
         <Move3d size={16} />
       </button>
     </div>
+
+    <button
+      class="generate-btn"
+      disabled={ui.busy || !canGenerate}
+      onclick={onGenerateWear}
+      title={generateLabel}
+    >
+      <Dices size={16} />
+      <span>{generateLabel}</span>
+    </button>
 
     {#if showTiling}
       <div class="tiling-panel">
@@ -616,6 +894,39 @@
   .tiling-toggle { background: rgba(20,20,20,0.75); border: 1px solid var(--border); color: var(--fg-1); padding: 5px 8px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(6px); }
   .tiling-toggle:hover { color: var(--accent); border-color: var(--accent); }
   .tiling-toggle.active { background: var(--accent); color: #141414; border-color: var(--accent); }
+  .generate-btn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: var(--accent);
+    color: #141414;
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    backdrop-filter: blur(6px);
+    box-shadow: 0 4px 16px rgba(240, 160, 32, 0.25);
+    transition: filter 0.15s, box-shadow 0.15s, opacity 0.15s;
+  }
+  .generate-btn:hover:not(:disabled) {
+    filter: brightness(1.1);
+    box-shadow: 0 6px 20px rgba(240, 160, 32, 0.4);
+  }
+  .generate-btn:active:not(:disabled) { filter: brightness(0.95); }
+  .generate-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    box-shadow: none;
+  }
   .tiling-panel { align-self: flex-start; pointer-events: auto; background: rgba(20,20,20,0.92); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; backdrop-filter: blur(8px); display: flex; flex-direction: column; gap: 8px; min-width: 260px; margin-top: 6px; }
   .tiling-row { display: grid; grid-template-columns: 70px 1fr 45px; align-items: center; gap: 8px; }
   .tiling-label { color: var(--fg-2); font-size: 11px; }

@@ -2,6 +2,7 @@
 use image::{GrayImage, RgbImage, Rgb};
 use rayon::prelude::*;
 use super::noise::TilingNoise;
+use crate::commands::pbr::LoadedPbr;
 
 // ============ Height → Normal ============
 
@@ -40,10 +41,6 @@ pub fn height_to_normal(height: &GrayImage, strength: f32) -> RgbImage {
     out
 }
 
-/// Смешивание двух normal map по маске (как в Substance).
-/// base — базовая нормаль (микрорельеф модели)
-/// dirt — нормаль грязи (V-профиль + текстура)
-/// mask — где накладывать (0 = base, 1 = dirt)
 pub fn blend_normals(base: &RgbImage, dirt: &RgbImage, mask: &GrayImage) -> RgbImage {
     let (w, h) = base.dimensions();
     if w != dirt.width() || h != dirt.height() || w != mask.width() || h != mask.height() {
@@ -70,30 +67,19 @@ pub fn blend_normals(base: &RgbImage, dirt: &RgbImage, mask: &GrayImage) -> RgbI
                 row.push(d_raw[idx * 3 + 2]);
                 continue;
             }
-
-            // Денормализуем обе нормали в [-1, 1]
             let bnx = (b_raw[idx * 3] as f32 / 255.0) * 2.0 - 1.0;
             let bny = (b_raw[idx * 3 + 1] as f32 / 255.0) * 2.0 - 1.0;
             let bnz = (b_raw[idx * 3 + 2] as f32 / 255.0) * 2.0 - 1.0;
-
             let dnx = (d_raw[idx * 3] as f32 / 255.0) * 2.0 - 1.0;
             let dny = (d_raw[idx * 3 + 1] as f32 / 255.0) * 2.0 - 1.0;
             let dnz = (d_raw[idx * 3 + 2] as f32 / 255.0) * 2.0 - 1.0;
-
-            // Линейная интерполяция
             let nx = bnx * (1.0 - m) + dnx * m;
             let ny = bny * (1.0 - m) + dny * m;
             let nz = bnz * (1.0 - m) + dnz * m;
-
-            // Нормализуем
             let len = (nx * nx + ny * ny + nz * nz).sqrt().max(1e-6);
-            let nnx = nx / len;
-            let nny = ny / len;
-            let nnz = nz / len;
-
-            row.push((((nnx * 0.5 + 0.5) * 255.0).clamp(0.0, 255.0)) as u8);
-            row.push((((nny * 0.5 + 0.5) * 255.0).clamp(0.0, 255.0)) as u8);
-            row.push((((nnz * 0.5 + 0.5) * 255.0).clamp(0.0, 255.0)) as u8);
+            row.push((((nx / len) * 0.5 + 0.5) * 255.0).clamp(0.0, 255.0) as u8);
+            row.push((((ny / len) * 0.5 + 0.5) * 255.0).clamp(0.0, 255.0) as u8);
+            row.push((((nz / len) * 0.5 + 0.5) * 255.0).clamp(0.0, 255.0) as u8);
         }
         row
     }).collect();
@@ -521,27 +507,21 @@ pub fn add_rim_highlight(albedo: &RgbImage, mask: &GrayImage, amount: f32, dark:
 
 // ============ CUSTOM MASKS ============
 
-/// Тип пользовательской маски.
-/// Mono — чёрно-белая маска, цвет берётся из MaskParams.color.
-/// Color — цветная маска, цвет родной (пикер игнорируется).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MaskKind {
     Mono,
     Color,
 }
 
-/// Параметры одной маски.
-/// Координаты в UV-пространстве: pos_x, pos_y от -1.0 до +1.0
-/// (0 = центр, -1 = левый/верхний край, +1 = правый/нижний).
 #[derive(Debug, Clone, Copy)]
 pub struct MaskParams {
     pub kind: MaskKind,
-    pub pos_x: f32,      // -1..+1
-    pub pos_y: f32,      // -1..+1
-    pub scale: f32,      // 0.1..5.0 (1.0 = маска по размеру текстуры)
-    pub rotation: f32,   // в градусах
-    pub opacity: f32,    // 0..1
-    pub color: [u8; 3],  // для Mono
+    pub pos_x: f32,
+    pub pos_y: f32,
+    pub scale: f32,
+    pub rotation: f32,
+    pub opacity: f32,
+    pub color: [u8; 3],
     pub affect_albedo: bool,
     pub affect_roughness: bool,
     pub affect_normal: bool,
@@ -564,71 +544,47 @@ impl Default for MaskParams {
     }
 }
 
-/// UV-трансформация: для пикселя (x, y) размера (w, h) возвращает
-/// координаты в пространстве маски (0..1, 0..1) с учётом сдвига, поворота, масштаба.
-/// Возвращает None, если точка вне маски (0..1 по обеим осям).
 #[inline]
 fn transform_uv(x: u32, y: u32, w: u32, h: u32, p: &MaskParams) -> Option<(f32, f32)> {
     let wf = w as f32;
     let hf = h as f32;
-
-    // UV пикселя: (0..1)
     let u = x as f32 / wf;
     let v = y as f32 / hf;
-
-    // Центрируем: -0.5..0.5
     let mut cu = u - 0.5;
     let mut cv = v - 0.5;
-
-    // Сдвиг маски (позиция центра)
     cu -= p.pos_x * 0.5;
     cv -= p.pos_y * 0.5;
-
-    // Поворот (обратный — мы ищем координату в маске, а не в текстуре)
     let angle = -p.rotation.to_radians();
     let cos_a = angle.cos();
     let sin_a = angle.sin();
     let ru = cu * cos_a - cv * sin_a;
     let rv = cu * sin_a + cv * cos_a;
-
-    // Масштаб (чем больше scale, тем меньше видимая область маски — значит делим)
     let su = ru / p.scale.max(0.001);
     let sv = rv / p.scale.max(0.001);
-
-    // Обратно в 0..1
     let mu = su + 0.5;
     let mv = sv + 0.5;
-
-    // Проверка границ
     if mu < 0.0 || mu > 1.0 || mv < 0.0 || mv > 1.0 {
         return None;
     }
-
     Some((mu, mv))
 }
 
-/// Билинейная выборка из RgbImage по координатам (0..1, 0..1).
 #[inline]
 fn sample_rgb_bilinear(img: &RgbImage, u: f32, v: f32) -> [f32; 3] {
     let (w, h) = img.dimensions();
     if w == 0 || h == 0 { return [0.0, 0.0, 0.0]; }
-
     let x = (u * (w as f32 - 1.0)).clamp(0.0, w as f32 - 1.0);
     let y = (v * (h as f32 - 1.0)).clamp(0.0, h as f32 - 1.0);
-
     let x0 = x.floor() as u32;
     let y0 = y.floor() as u32;
     let x1 = (x0 + 1).min(w - 1);
     let y1 = (y0 + 1).min(h - 1);
-
     let fx = x - x0 as f32;
     let fy = y - y0 as f32;
-
     let p00 = img.get_pixel(x0, y0);
     let p10 = img.get_pixel(x1, y0);
     let p01 = img.get_pixel(x0, y1);
     let p11 = img.get_pixel(x1, y1);
-
     let mut out = [0.0f32; 3];
     for c in 0..3 {
         let v00 = p00[c] as f32;
@@ -642,17 +598,11 @@ fn sample_rgb_bilinear(img: &RgbImage, u: f32, v: f32) -> [f32; 3] {
     out
 }
 
-/// Возвращает (маска как f32 0..1, цвет RGB 0..255).
-/// Для Color-маски: mask = яркость, color = родной цвет.
-/// Для Mono-маски: mask = яркость, color = p.color.
 #[inline]
 fn sample_mask(img: &RgbImage, u: f32, v: f32, p: &MaskParams) -> (f32, [u8; 3]) {
     let rgb = sample_rgb_bilinear(img, u, v);
-
-    // Яркость = среднее по каналам (для Mono)
     let lum = (rgb[0] * 0.299 + rgb[1] * 0.587 + rgb[2] * 0.114) / 255.0;
     let coverage = lum.clamp(0.0, 1.0) * p.opacity;
-
     let color = match p.kind {
         MaskKind::Mono => p.color,
         MaskKind::Color => [
@@ -661,18 +611,14 @@ fn sample_mask(img: &RgbImage, u: f32, v: f32, p: &MaskParams) -> (f32, [u8; 3])
             rgb[2].clamp(0.0, 255.0) as u8,
         ],
     };
-
     (coverage, color)
 }
 
-/// Наложение маски на albedo.
-/// Формула: new = albedo * (1 - m) + color * m
 pub fn apply_custom_mask_to_albedo(albedo: &RgbImage, mask: &RgbImage, p: &MaskParams) -> RgbImage {
     let (w, h) = albedo.dimensions();
     if !p.affect_albedo || p.opacity <= 0.001 {
         return albedo.clone();
     }
-    // Если размеры не совпадают — ресайзим маску nearest-neighbor
     let mask_owned;
     let mask_ref = if w != mask.width() || h != mask.height() {
         mask_owned = image::imageops::resize(mask, w, h, image::imageops::FilterType::Nearest);
@@ -691,7 +637,6 @@ pub fn apply_custom_mask_to_albedo(albedo: &RgbImage, mask: &RgbImage, p: &MaskP
             let idx = (y * w + x) as usize;
             match transform_uv(x, y, w, h, p) {
                 Some((mu, mv)) => {
-                    // Билинейная выборка маски вручную (без создания нового ImageBuffer)
                     let mx = (mu * (w as f32 - 1.0)).clamp(0.0, w as f32 - 1.0);
                     let my = (mv * (h as f32 - 1.0)).clamp(0.0, h as f32 - 1.0);
                     let x0 = mx.floor() as u32;
@@ -751,9 +696,6 @@ pub fn apply_custom_mask_to_albedo(albedo: &RgbImage, mask: &RgbImage, p: &MaskP
     out
 }
 
-/// Наложение маски на roughness.
-/// В местах маски roughness = roughness * (1 - m) + new_rough * m,
-/// где new_rough задаётся как 0.9 (шершавая поверхность).
 pub fn apply_custom_mask_to_roughness(rough: &GrayImage, mask: &RgbImage, p: &MaskParams) -> GrayImage {
     let (w, h) = rough.dimensions();
     if w != mask.width() || h != mask.height() || !p.affect_roughness || p.opacity <= 0.001 {
@@ -814,8 +756,6 @@ pub fn apply_custom_mask_to_roughness(rough: &GrayImage, mask: &RgbImage, p: &Ma
     out
 }
 
-/// Наложение маски на normal через вычисление градиента маски.
-/// В местах маски появляется бугор (или вмятина — в зависимости от знака).
 pub fn apply_custom_mask_to_normal(normal: &RgbImage, mask: &RgbImage, p: &MaskParams, depth: f32) -> RgbImage {
     let (w, h) = normal.dimensions();
     if w != mask.width() || h != mask.height() || !p.affect_normal || p.opacity <= 0.001 {
@@ -826,7 +766,6 @@ pub fn apply_custom_mask_to_normal(normal: &RgbImage, mask: &RgbImage, p: &MaskP
     let n_raw = normal.as_raw();
     let m_raw = mask.as_raw();
 
-    // Предварительно: яркостная карта маски, чтобы считать градиент
     let lum_map: Vec<f32> = (0..(w * h) as usize).into_par_iter().map(|i| {
         let r = m_raw[i * 3] as f32;
         let g = m_raw[i * 3 + 1] as f32;
@@ -841,7 +780,6 @@ pub fn apply_custom_mask_to_normal(normal: &RgbImage, mask: &RgbImage, p: &MaskP
             let idx = (y * w + x) as usize;
             match transform_uv(x, y, w, h, p) {
                 Some((mu, mv)) => {
-                    // Пересчёт в локальные пиксельные координаты для градиента
                     let mx = (mu * (w as f32 - 1.0)).clamp(0.0, w as f32 - 1.0);
                     let my = (mv * (h as f32 - 1.0)).clamp(0.0, h as f32 - 1.0);
                     let xi = mx.round() as i32;
@@ -861,12 +799,10 @@ pub fn apply_custom_mask_to_normal(normal: &RgbImage, mask: &RgbImage, p: &MaskP
                     let gx = (r - l) * depth * p.opacity;
                     let gy = (d - u_) * depth * p.opacity;
 
-                    // Текущая нормаль
                     let nx = (n_raw[idx * 3] as f32 / 255.0 - 0.5) * 2.0;
                     let ny = (n_raw[idx * 3 + 1] as f32 / 255.0 - 0.5) * 2.0;
                     let nz = (n_raw[idx * 3 + 2] as f32 / 255.0) * 2.0 - 1.0;
 
-                    // Возмущение нормали через градиент
                     let new_nx = (nx - gx).clamp(-1.0, 1.0);
                     let new_ny = (ny - gy).clamp(-1.0, 1.0);
 
@@ -888,6 +824,313 @@ pub fn apply_custom_mask_to_normal(normal: &RgbImage, mask: &RgbImage, p: &MaskP
     let mut out = RgbImage::new(w, h);
     out.copy_from_slice(&flat);
     out
+}
+
+// ═══════════════════════════════════════════════════════════
+// DECAL
+// ═══════════════════════════════════════════════════════════
+
+#[derive(Debug, Clone, Copy)]
+pub struct DecalParamsFromUI {
+    pub pos_x: f32,
+    pub pos_y: f32,
+    pub scale: f32,
+    pub rotation_deg: f32,
+    pub keep_aspect: bool,
+    pub opacity: f32,
+    pub affect_albedo: bool,
+    pub affect_roughness: bool,
+    pub affect_normal: bool,
+    pub height_intensity: f32,
+    pub random_position: bool,
+    pub random_rotation: bool,
+    pub tile_edge: bool,
+}
+
+impl Default for DecalParamsFromUI {
+    fn default() -> Self {
+        Self {
+            pos_x: 0.0,
+            pos_y: 0.0,
+            scale: 1.0,
+            rotation_deg: 0.0,
+            keep_aspect: true,
+            opacity: 1.0,
+            affect_albedo: true,
+            affect_roughness: false,
+            affect_normal: false,
+            height_intensity: 0.0,
+            random_position: false,
+            random_rotation: false,
+            tile_edge: false,
+        }
+    }
+}
+
+#[inline]
+fn sample_rgba_bilinear(img: &image::RgbaImage, u: f32, v: f32) -> [f32; 4] {
+    let (w, h) = img.dimensions();
+    if w == 0 || h == 0 { return [0.0, 0.0, 0.0, 0.0]; }
+
+    let x = (u * (w as f32 - 1.0)).clamp(0.0, w as f32 - 1.0);
+    let y = (v * (h as f32 - 1.0)).clamp(0.0, h as f32 - 1.0);
+    let x0 = x.floor() as u32;
+    let y0 = y.floor() as u32;
+    let x1 = (x0 + 1).min(w - 1);
+    let y1 = (y0 + 1).min(h - 1);
+    let fx = x - x0 as f32;
+    let fy = y - y0 as f32;
+
+    let p00 = img.get_pixel(x0, y0).0;
+    let p10 = img.get_pixel(x1, y0).0;
+    let p01 = img.get_pixel(x0, y1).0;
+    let p11 = img.get_pixel(x1, y1).0;
+
+    let mut out = [0.0f32; 4];
+    for c in 0..4 {
+        let v00 = p00[c] as f32;
+        let v10 = p10[c] as f32;
+        let v01 = p01[c] as f32;
+        let v11 = p11[c] as f32;
+        let top = v00 * (1.0 - fx) + v10 * fx;
+        let bot = v01 * (1.0 - fx) + v11 * fx;
+        out[c] = top * (1.0 - fy) + bot * fy;
+    }
+    out
+}
+
+#[inline]
+fn sample_gray_bilinear(img: &GrayImage, u: f32, v: f32) -> f32 {
+    let (w, h) = img.dimensions();
+    if w == 0 || h == 0 { return 0.0; }
+    let x = (u * (w as f32 - 1.0)).clamp(0.0, w as f32 - 1.0);
+    let y = (v * (h as f32 - 1.0)).clamp(0.0, h as f32 - 1.0);
+    let x0 = x.floor() as u32;
+    let y0 = y.floor() as u32;
+    let x1 = (x0 + 1).min(w - 1);
+    let y1 = (y0 + 1).min(h - 1);
+    let fx = x - x0 as f32;
+    let fy = y - y0 as f32;
+
+    let v00 = img.get_pixel(x0, y0).0[0] as f32;
+    let v10 = img.get_pixel(x1, y0).0[0] as f32;
+    let v01 = img.get_pixel(x0, y1).0[0] as f32;
+    let v11 = img.get_pixel(x1, y1).0[0] as f32;
+
+    let top = v00 * (1.0 - fx) + v10 * fx;
+    let bot = v01 * (1.0 - fx) + v11 * fx;
+    top * (1.0 - fy) + bot * fy
+}
+
+/// Наложение Decal на PBR-сет.
+/// Формула 1-в-1 с decal-shader.js (GLSL).
+pub fn apply_decal_to_set(
+    set: &LoadedPbr,
+    decal: &image::RgbaImage,
+    height: Option<&GrayImage>,
+    p: &DecalParamsFromUI,
+) -> LoadedPbr {
+    let (w, h) = (set.width(), set.height());
+    if w == 0 || h == 0 { return set.clone(); }
+
+    let (dw, dh) = decal.dimensions();
+    if dw == 0 || dh == 0 { return set.clone(); }
+
+    let aspect_w = dw as f32;
+    let aspect_h = dh as f32;
+    let scale_x = p.scale.max(0.001);
+    let scale_y = if p.keep_aspect && aspect_w > 0.0 {
+        p.scale * (aspect_h / aspect_w)
+    } else {
+        p.scale
+    }.max(0.001);
+
+    let rot_rad = -p.rotation_deg.to_radians();
+    let cos_r = rot_rad.cos();
+    let sin_r = rot_rad.sin();
+
+    let opacity = p.opacity.clamp(0.0, 1.0);
+    let amount_albedo = if p.affect_albedo { 1.0f32 } else { 0.0 };
+    let amount_rough  = if p.affect_roughness { 1.0f32 } else { 0.0 };
+    let amount_normal = if p.affect_normal { 1.0f32 } else { 0.0 };
+    let height_intensity = p.height_intensity;
+
+    let wf = w as f32;
+    let hf = h as f32;
+    let eps = 1.0f32 / 512.0;
+
+    let n_px = (w * h) as usize;
+    let decal_uvs: Vec<Option<(f32, f32)>> = (0..n_px).into_par_iter().map(|i| {
+        let x = (i as u32) % w;
+        let y = (i as u32) / w;
+        let u = x as f32 / wf;
+        let v = y as f32 / hf;
+
+        let cx = u - 0.5 - p.pos_x;
+        let cy = v - 0.5 - p.pos_y;
+        let rx = cx * cos_r - cy * sin_r;
+        let ry = cx * sin_r + cy * cos_r;
+        let du = rx / scale_x;
+        let dv = ry / scale_y;
+        let mu = du + 0.5;
+        let mv = dv + 0.5;
+
+        if p.tile_edge {
+            Some((mu.rem_euclid(1.0), mv.rem_euclid(1.0)))
+        } else {
+            if mu < 0.0 || mu > 1.0 || mv < 0.0 || mv > 1.0 {
+                None
+            } else {
+                Some((mu, mv))
+            }
+        }
+    }).collect();
+
+    // ═══ ALBEDO ═══
+    let new_albedo = set.albedo.as_ref().map(|albedo| {
+        let a_raw = albedo.as_raw();
+        let flat: Vec<u8> = (0..h as usize).into_par_iter().flat_map(|yi| {
+            let y = yi as u32;
+            let mut row = Vec::with_capacity((w * 3) as usize);
+            for x in 0..w {
+                let idx = (y * w + x) as usize;
+                let a0 = a_raw[idx * 3] as f32;
+                let a1 = a_raw[idx * 3 + 1] as f32;
+                let a2 = a_raw[idx * 3 + 2] as f32;
+
+                match decal_uvs[idx] {
+                    Some((mu, mv)) => {
+                        let d = sample_rgba_bilinear(decal, mu, mv);
+                        let mask = (d[3] / 255.0) * opacity;
+                        if mask < 0.001 || amount_albedo < 0.001 {
+                            row.push(a0 as u8);
+                            row.push(a1 as u8);
+                            row.push(a2 as u8);
+                        } else {
+                            let t = (mask * amount_albedo).clamp(0.0, 1.0);
+                            row.push((a0 * (1.0 - t) + d[0] * t).clamp(0.0, 255.0) as u8);
+                            row.push((a1 * (1.0 - t) + d[1] * t).clamp(0.0, 255.0) as u8);
+                            row.push((a2 * (1.0 - t) + d[2] * t).clamp(0.0, 255.0) as u8);
+                        }
+                    }
+                    None => {
+                        row.push(a0 as u8);
+                        row.push(a1 as u8);
+                        row.push(a2 as u8);
+                    }
+                }
+            }
+            row
+        }).collect();
+        let mut img = RgbImage::new(w, h);
+        img.copy_from_slice(&flat);
+        img
+    });
+
+    // ═══ ROUGHNESS ═══
+    let new_roughness = set.roughness.as_ref().map(|rough| {
+        let r_raw = rough.as_raw();
+        let flat: Vec<u8> = (0..h as usize).into_par_iter().flat_map(|yi| {
+            let y = yi as u32;
+            let mut row = Vec::with_capacity(w as usize);
+            for x in 0..w {
+                let idx = (y * w + x) as usize;
+                let rv = r_raw[idx] as f32 / 255.0;
+                match decal_uvs[idx] {
+                    Some((mu, mv)) => {
+                        let d = sample_rgba_bilinear(decal, mu, mv);
+                        let mask = (d[3] / 255.0) * opacity;
+                        if mask < 0.001 || amount_rough < 0.001 {
+                            row.push(r_raw[idx]);
+                        } else {
+                            let new_r = (rv + mask * amount_rough).clamp(0.0, 1.0);
+                            row.push((new_r * 255.0) as u8);
+                        }
+                    }
+                    None => row.push(r_raw[idx]),
+                }
+            }
+            row
+        }).collect();
+        let mut img = GrayImage::new(w, h);
+        img.copy_from_slice(&flat);
+        img
+    });
+
+    // ═══ HEIGHT (для normal) ═══
+    let new_normal = if amount_normal > 0.001 && height_intensity.abs() > 0.001 {
+        set.normal.as_ref().map(|normal| {
+            let n_raw = normal.as_raw();
+
+            let flat: Vec<u8> = (0..h as usize).into_par_iter().flat_map(|yi| {
+                let y = yi as u32;
+                let mut row = Vec::with_capacity((w * 3) as usize);
+                for x in 0..w {
+                    let idx = (y * w + x) as usize;
+
+                    let n0 = n_raw[idx * 3] as f32 / 255.0 * 2.0 - 1.0;
+                    let n1 = n_raw[idx * 3 + 1] as f32 / 255.0 * 2.0 - 1.0;
+                    let n2 = n_raw[idx * 3 + 2] as f32 / 255.0 * 2.0 - 1.0;
+
+                    let uv = match decal_uvs[idx] {
+                        Some(uv) => uv,
+                        None => {
+                            row.push(n_raw[idx * 3]);
+                            row.push(n_raw[idx * 3 + 1]);
+                            row.push(n_raw[idx * 3 + 2]);
+                            continue;
+                        }
+                    };
+
+                    let h_l = sample_height_at(uv.0 - eps, uv.1, decal, height);
+                    let h_r = sample_height_at(uv.0 + eps, uv.1, decal, height);
+                    let h_d = sample_height_at(uv.0, uv.1 - eps, decal, height);
+                    let h_u = sample_height_at(uv.0, uv.1 + eps, decal, height);
+
+                    let gx = (h_r - h_l) * height_intensity;
+                    let gy = (h_u - h_d) * height_intensity;
+
+                    let new_nx = (n0 - gx * 4.0).clamp(-1.0, 1.0);
+                    let new_ny = (n1 - gy * 4.0).clamp(-1.0, 1.0);
+
+                    let len = (new_nx * new_nx + new_ny * new_ny + n2 * n2).sqrt().max(1e-6);
+                    row.push((((new_nx / len) * 0.5 + 0.5) * 255.0).clamp(0.0, 255.0) as u8);
+                    row.push((((new_ny / len) * 0.5 + 0.5) * 255.0).clamp(0.0, 255.0) as u8);
+                    row.push((((n2 / len) * 0.5 + 0.5) * 255.0).clamp(0.0, 255.0) as u8);
+                }
+                row
+            }).collect();
+            let mut img = RgbImage::new(w, h);
+            img.copy_from_slice(&flat);
+            img
+        })
+    } else {
+        set.normal.clone()
+    };
+
+    LoadedPbr {
+        albedo: new_albedo.or_else(|| set.albedo.clone()),
+        normal: new_normal.or_else(|| set.normal.clone()),
+        roughness: new_roughness.or_else(|| set.roughness.clone()),
+        ao: set.ao.clone(),
+        height: set.height.clone(),
+        metalness: set.metalness.clone(),
+        edge: set.edge.clone(),
+    }
+}
+
+#[inline]
+fn sample_height_at(
+    u: f32, v: f32,
+    decal: &image::RgbaImage,
+    height: Option<&GrayImage>,
+) -> f32 {
+    if let Some(h) = height {
+        sample_gray_bilinear(h, u, v) / 255.0
+    } else {
+        let d = sample_rgba_bilinear(decal, u, v);
+        (d[0] + d[1] + d[2]) / 3.0 / 255.0
+    }
 }
 
 #[cfg(test)]

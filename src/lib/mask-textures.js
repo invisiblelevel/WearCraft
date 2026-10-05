@@ -23,6 +23,7 @@ export async function loadMaskTexture(path) {
 
       // Считаем статистику: RGB-яркость и альфу
       let rgbMin = 255, rgbMax = 0, aMin = 255, aMax = 0;
+      let lumSum = 0;
       for (let i = 0; i < total; i++) {
         const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2], a = data[i * 4 + 3];
         const lum = Math.round((r + g + b) / 3);
@@ -30,15 +31,19 @@ export async function loadMaskTexture(path) {
         if (lum > rgbMax) rgbMax = lum;
         if (a < aMin) aMin = a;
         if (a > aMax) aMax = a;
+        lumSum += lum;
       }
       const rgbRange = rgbMax - rgbMin;
       const alphaRange = aMax - aMin;
+      const lumMean = lumSum / total;
 
-      // Берём тот канал, где БОЛЬШЕ вариация.
-      // Если оба однотонные — берём RGB (не важно, что).
-      const useAlpha = alphaRange > rgbRange && alphaRange > 10;
+      // Если в PNG есть альфа-вариация — читаем ТОЛЬКО альфу.
+      // Иначе — читаем RGB, но ИНВЕРТИРУЕМ, если фон светлый (белый).
+      // Иначе белый фон = 1 → квадрат в шейдере при tileable = false.
+      const useAlpha = alphaRange > 10;
+      const invertRgb = !useAlpha && lumMean > 127;
 
-      pushLog(`[Mask] ${path.split(/[\\/]/).pop()} rgbRange=${rgbRange} alphaRange=${alphaRange} → useAlpha=${useAlpha}`);
+      pushLog(`[Mask] ${path.split(/[\\/]/).pop()} rgbRange=${rgbRange} alphaRange=${alphaRange} lumMean=${lumMean.toFixed(0)} → useAlpha=${useAlpha} invertRgb=${invertRgb}`);
 
       // Пишем выбранный канал в RGB, альфу = 255
       for (let i = 0; i < total; i++) {
@@ -47,6 +52,7 @@ export async function loadMaskTexture(path) {
           v = data[i * 4 + 3];
         } else {
           v = Math.round((data[i * 4] + data[i * 4 + 1] + data[i * 4 + 2]) / 3);
+          if (invertRgb) v = 255 - v;
         }
         data[i * 4] = v;
         data[i * 4 + 1] = v;

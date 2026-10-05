@@ -17,29 +17,42 @@
 
   import { initActions } from './lib/actions.svelte.js';
   import { initDragDrop, destroyDragDrop } from './lib/drag-drop.js';
-  import { ui } from './lib/stores.svelte.js';
+  import { ui, settings, saveSettings } from './lib/stores.svelte.js';
   import { initHotkeys, destroyHotkeys } from './lib/hotkeys.js';
 
   onMount(async () => {
     await initI18n();
     await initDragDrop();
-	initHotkeys();
+    initHotkeys();
   });
 
   onDestroy(() => {
     destroyDragDrop();
-	destroyHotkeys();
+    destroyHotkeys();
   });
 
   function onSceneReady(e) {
     initActions(e.detail.scene);
   }
+
+  // Автосохранение zoom в settings + localStorage
+  let zoomSaveTimer = null;
+  $effect(() => {
+    const z = ui.zoom;
+    if (Math.abs((settings.uiZoom || 1.0) - z) < 0.001) return;
+    settings.uiZoom = z;
+    if (zoomSaveTimer) clearTimeout(zoomSaveTimer);
+    zoomSaveTimer = setTimeout(() => saveSettings(), 300);
+  });
 </script>
 
 <svelte:window on:wearcraft:scene-ready={onSceneReady} />
 
 {#if i18n.ready}
-<div class="app">
+<div
+  class="app"
+  style="zoom: {ui.zoom}; width: calc(100vw / {ui.zoom}); height: calc(100vh / {ui.zoom});"
+>
 
   <TopBar />
 
@@ -98,9 +111,6 @@
   .app {
     display: flex;
     flex-direction: column;
-    height: 100vh;
-    width: 100vw;
-    max-width: 100vw;
     overflow: hidden;
     background: var(--bg-0);
   }

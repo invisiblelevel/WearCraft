@@ -14,7 +14,7 @@ function makeRng(seed) {
  * @param {number} count      — сколько instances (1..8)
  * @param {number} scale
  * @param {number} maskCount  — размер пула
- * @param {object} opts       — глобальные posX/posY/rotation + randomRotation
+ * @param {object} opts       — глобальные posX/posY/rotation + randomRotation + tileable
  */
 export function generateInstances(seed, count, scale, maskCount, opts = {}) {
   const {
@@ -22,6 +22,8 @@ export function generateInstances(seed, count, scale, maskCount, opts = {}) {
     globalPosY = 0,
     globalRotation = 0,
     randomRotation = true,
+    randomFlip = true,
+    tileable = true,
   } = opts;
 
   const c = Math.max(1, Math.min(8, Math.round(count)));
@@ -36,9 +38,10 @@ export function generateInstances(seed, count, scale, maskCount, opts = {}) {
     const s = (0.5 + (rnd() - 0.3) * 0.8) * scale;
     const randomRot = randomRotation ? rnd() * Math.PI * 2 : 0;
     const rotation = randomRot + globalRotation;
-    const flipX = rnd() > 0.5 ? 1 : -1;
-    const flipY = rnd() > 0.5 ? 1 : -1;
-    out.push({ maskIdx, offsetX, offsetY, scale: s, rotation, flipX, flipY, tileable: true });
+    // flip только если разрешено. Для streaks передаём randomFlip: false.
+    const flipX = randomFlip ? (rnd() > 0.5 ? 1 : -1) : 1;
+    const flipY = randomFlip ? (rnd() > 0.5 ? 1 : -1) : 1;
+    out.push({ maskIdx, offsetX, offsetY, scale: s, rotation, flipX, flipY, tileable });
   }
   return out;
 }

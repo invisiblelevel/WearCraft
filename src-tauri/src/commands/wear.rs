@@ -2,11 +2,18 @@
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 use std::path::{Path, PathBuf};
-use image::RgbImage;
+use image::{GrayImage, RgbImage};
 use crate::core::noise::TilingNoise;
-use crate::core::presets::{get_preset, ScratchParamsFromUI, DirtParamsFromUI, RustParamsFromUI};
+use crate::core::presets::{
+    get_preset,
+    ScratchParamsFromUI, DirtParamsFromUI, RustParamsFromUI, StreakParamsFromUI,
+};
+use crate::core::pbr_ops::DecalParamsFromUI;
 use crate::core::pattern::MaskInstance;
-use crate::core::pbr_ops::{MaskKind, MaskParams, apply_custom_mask_to_albedo, apply_custom_mask_to_roughness, apply_custom_mask_to_normal};
+use crate::core::pbr_ops::{
+    MaskKind, MaskParams,
+    apply_custom_mask_to_albedo, apply_custom_mask_to_roughness, apply_custom_mask_to_normal,
+};
 use crate::commands::pbr::{load_pbr_set, LoadedPbr};
 
 #[derive(Debug, Deserialize)]
@@ -17,10 +24,27 @@ pub struct WearParams {
     pub albedo: Option<String>, pub normal: Option<String>, pub roughness: Option<String>,
     pub ao: Option<String>, pub height: Option<String>, pub metalness: Option<String>, pub edge: Option<String>,
     // Scratch
+    pub scratch_procedural: Option<bool>,
     pub scratch_density: Option<f32>, pub scratch_length: Option<f32>, pub scratch_thickness: Option<f32>,
     pub scratch_waviness: Option<f32>, pub scratch_branches: Option<f32>, pub scratch_clusters: Option<f32>,
     pub scratch_normal: Option<bool>, pub scratch_depth: Option<f32>,
     pub scratch_realistic: Option<bool>, pub scratch_rim: Option<bool>,
+    pub scratch_count: Option<f32>,
+    pub scratch_mask_scale: Option<f32>,
+    pub scratch_deform: Option<f32>,
+    pub scratch_threshold: Option<f32>,
+    pub scratch_sharpness: Option<f32>,
+    pub scratch_color: Option<[u8; 3]>,
+    pub scratch_mask_thickness: Option<f32>,
+    pub scratch_mask_rim: Option<bool>,
+    pub scratch_mask_normal: Option<bool>,
+    pub scratch_disable_tiling: Option<bool>,
+    pub scratch_pos_x: Option<f32>,
+    pub scratch_pos_y: Option<f32>,
+    pub scratch_rotation: Option<f32>,
+    pub scratch_random_rotation: Option<bool>,
+    pub user_mask_scratch: Option<String>,
+    pub folder_mask_names_scratch: Option<Vec<String>>,
     // Dirt
     pub dirt_count: Option<f32>,
     pub dirt_scale: Option<f32>,
@@ -44,7 +68,28 @@ pub struct WearParams {
     pub rust_rim: Option<bool>,
     pub user_mask_rust: Option<String>,
     pub folder_mask_names_rust: Option<Vec<String>>,
-    // Instances: массив массивов, по одному на вариацию
+    // Streaks
+    pub streak_procedural: Option<bool>,
+    pub streak_count: Option<f32>,
+    pub streak_threshold: Option<f32>,
+    pub streak_sharpness: Option<f32>,
+    pub streak_color: Option<[u8; 3]>,
+    pub streak_thickness: Option<f32>,
+    pub streak_rim: Option<bool>,
+    pub streak_normal: Option<bool>,
+    pub streak_size: Option<f32>,
+    pub streak_stretch: Option<f32>,
+    pub streak_waviness: Option<f32>,
+    pub streak_pos_x: Option<f32>,
+    pub streak_pos_y: Option<f32>,
+    pub streak_rotation: Option<f32>,
+    pub streak_proc_scale: Option<f32>,
+    pub streak_mask_scale: Option<f32>,
+    pub streak_deform: Option<f32>,
+    pub streak_disable_tiling: Option<bool>,
+    pub user_mask_streak: Option<String>,
+    pub folder_mask_names_streak: Option<Vec<String>>,
+    // Instances
     pub instances_per_variation: Option<Vec<Vec<MaskInstance>>>,
     // Custom mask
     pub mask_enabled: Option<bool>,
@@ -59,6 +104,22 @@ pub struct WearParams {
     pub mask_affect_albedo: Option<bool>,
     pub mask_affect_roughness: Option<bool>,
     pub mask_affect_normal: Option<bool>,
+    // Decal
+    pub decal_path: Option<String>,
+    pub decal_height_path: Option<String>,
+    pub decal_pos_x: Option<f32>,
+    pub decal_pos_y: Option<f32>,
+    pub decal_scale: Option<f32>,
+    pub decal_rotation: Option<f32>,
+    pub decal_keep_aspect: Option<bool>,
+    pub decal_opacity: Option<f32>,
+    pub decal_affect_albedo: Option<bool>,
+    pub decal_affect_roughness: Option<bool>,
+    pub decal_affect_normal: Option<bool>,
+    pub decal_height_intensity: Option<f32>,
+    pub decal_random_position: Option<bool>,
+    pub decal_random_rotation: Option<bool>,
+    pub decal_tile_edge: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -101,8 +162,6 @@ fn scan_dir(dir: &Path) -> Vec<PathBuf> {
 
 // ============ Папка масок в AppData ============
 
-/// Возвращает путь к папке масок в AppData: %APPDATA%/WearCraft/masks/{subfolder}/
-/// Если папки нет — создаёт. Если пусто — копирует встроенные из bundle.
 fn user_masks_dir(app: &AppHandle, subfolder: &str) -> Result<PathBuf, String> {
     let base = app.path().app_data_dir()
         .map_err(|e| format!("app_data_dir: {}", e))?;
@@ -160,7 +219,7 @@ fn list_masks_in_dir(dir: &Path) -> Vec<String> {
         .collect()
 }
 
-// ============ Tauri-команды для папки ============
+// ============ Tauri-команды ============
 
 #[tauri::command]
 pub fn list_masks_in_folder(app: AppHandle, subfolder: String) -> Result<Vec<String>, String> {
@@ -180,26 +239,11 @@ pub fn open_user_masks_folder(app: AppHandle, subfolder: String) -> Result<(), S
     let path_str = dir.to_string_lossy().to_string();
 
     #[cfg(target_os = "windows")]
-    {
-        std::process::Command::new("explorer")
-            .arg(&path_str)
-            .spawn()
-            .map_err(|e| format!("explorer: {}", e))?;
-    }
+    { std::process::Command::new("explorer").arg(&path_str).spawn().map_err(|e| format!("explorer: {}", e))?; }
     #[cfg(target_os = "macos")]
-    {
-        std::process::Command::new("open")
-            .arg(&path_str)
-            .spawn()
-            .map_err(|e| format!("open: {}", e))?;
-    }
+    { std::process::Command::new("open").arg(&path_str).spawn().map_err(|e| format!("open: {}", e))?; }
     #[cfg(target_os = "linux")]
-    {
-        std::process::Command::new("xdg-open")
-            .arg(&path_str)
-            .spawn()
-            .map_err(|e| format!("xdg-open: {}", e))?;
-    }
+    { std::process::Command::new("xdg-open").arg(&path_str).spawn().map_err(|e| format!("xdg-open: {}", e))?; }
     Ok(())
 }
 
@@ -208,31 +252,42 @@ pub fn open_user_masks_folder(app: AppHandle, subfolder: String) -> Result<(), S
 fn open_as_rgb(p: &Path) -> Option<RgbImage> {
     match image::open(p) {
         Ok(img) => {
-            if img.width() == 0 || img.height() == 0 {
-                println!("[wear] Пустая картинка: {:?}", p.file_name());
-                return None;
-            }
+            if img.width() == 0 || img.height() == 0 { return None; }
             let rgba = img.to_rgba8();
             let (mw, mh) = rgba.dimensions();
 
-            let mut min_a: u8 = 255;
-            let mut max_a: u8 = 0;
+            let mut rgb_min: u8 = 255;
+            let mut rgb_max: u8 = 0;
+            let mut a_min: u8 = 255;
+            let mut a_max: u8 = 0;
+            let mut lum_sum: u64 = 0;
             for px in rgba.pixels() {
-                let a = px.0[3];
-                if a < min_a { min_a = a; }
-                if a > max_a { max_a = a; }
+                let [r, g, b, a] = px.0;
+                let lum = ((r as u16 + g as u16 + b as u16) / 3) as u8;
+                if lum < rgb_min { rgb_min = lum; }
+                if lum > rgb_max { rgb_max = lum; }
+                if a < a_min { a_min = a; }
+                if a > a_max { a_max = a; }
+                lum_sum += lum as u64;
             }
-            let alpha_varies = max_a.saturating_sub(min_a) > 10;
+            let _rgb_range = rgb_max.saturating_sub(rgb_min);
+            let alpha_range = a_max.saturating_sub(a_min);
+            let total = (mw as u64) * (mh as u64);
+            let lum_mean = if total > 0 { (lum_sum / total) as u8 } else { 0 };
+
+            let use_alpha = alpha_range > 10;
+            let invert_rgb = !use_alpha && lum_mean > 127;
 
             let mut rgb = RgbImage::new(mw, mh);
             for y in 0..mh {
                 for x in 0..mw {
                     let px = rgba.get_pixel(x, y);
                     let [r, g, b, a] = px.0;
-                    let v = if alpha_varies {
+                    let v = if use_alpha {
                         a
                     } else {
-                        ((r as u16 + g as u16 + b as u16) / 3) as u8
+                        let lum = ((r as u16 + g as u16 + b as u16) / 3) as u8;
+                        if invert_rgb { 255 - lum } else { lum }
                     };
                     rgb.put_pixel(x, y, image::Rgb([v, v, v]));
                 }
@@ -243,18 +298,78 @@ fn open_as_rgb(p: &Path) -> Option<RgbImage> {
     }
 }
 
+fn open_decal_rgba(p: &Path) -> Option<(image::RgbaImage, bool)> {
+    match image::open(p) {
+        Ok(img) => {
+            let rgba = img.to_rgba8();
+            let (mw, mh) = rgba.dimensions();
+            if mw == 0 || mh == 0 { return None; }
+
+            let mut a_min: u8 = 255;
+            let mut a_max: u8 = 0;
+            for px in rgba.pixels() {
+                let a = px.0[3];
+                if a < a_min { a_min = a; }
+                if a > a_max { a_max = a; }
+            }
+            let alpha_range = a_max.saturating_sub(a_min);
+            let has_alpha = alpha_range > 10;
+
+            Some((rgba, has_alpha))
+        }
+        Err(_) => None,
+    }
+}
+
+fn open_height_gray(p: &Path) -> Option<GrayImage> {
+    match image::open(p) {
+        Ok(img) => {
+            let rgba = img.to_rgba8();
+            let (mw, mh) = rgba.dimensions();
+            if mw == 0 || mh == 0 { return None; }
+
+            let mut a_min: u8 = 255;
+            let mut a_max: u8 = 0;
+            let mut lum_sum: u64 = 0;
+            for px in rgba.pixels() {
+                let [r, g, b, a] = px.0;
+                let lum = ((r as u16 + g as u16 + b as u16) / 3) as u8;
+                if a < a_min { a_min = a; }
+                if a > a_max { a_max = a; }
+                lum_sum += lum as u64;
+            }
+            let alpha_range = a_max.saturating_sub(a_min);
+            let use_alpha = alpha_range > 10;
+            let total = (mw as u64) * (mh as u64);
+            let lum_mean = if total > 0 { (lum_sum / total) as u8 } else { 0 };
+            let invert_rgb = !use_alpha && lum_mean > 127;
+
+            let mut out = GrayImage::new(mw, mh);
+            for y in 0..mh {
+                for x in 0..mw {
+                    let px = rgba.get_pixel(x, y);
+                    let [r, g, b, a] = px.0;
+                    let v = if use_alpha {
+                        a
+                    } else {
+                        let lum = ((r as u16 + g as u16 + b as u16) / 3) as u8;
+                        if invert_rgb { 255 - lum } else { lum }
+                    };
+                    out.put_pixel(x, y, image::Luma([v]));
+                }
+            }
+            Some(out)
+        }
+        Err(_) => None,
+    }
+}
+
 fn load_single_mask(path: &str) -> Vec<RgbImage> {
     let p = Path::new(path);
-    if !p.is_file() {
-        println!("[wear] Файл не найден: {}", path);
-        return Vec::new();
-    }
+    if !p.is_file() { return Vec::new(); }
     if let Some(ext) = p.extension() {
         let e = ext.to_string_lossy().to_lowercase();
-        if !is_supported_ext(&e) {
-            println!("[wear] Формат .{} не поддерживается", e);
-            return Vec::new();
-        }
+        if !is_supported_ext(&e) { return Vec::new(); }
     }
     match open_as_rgb(p) {
         Some(img) => vec![img],
@@ -262,11 +377,8 @@ fn load_single_mask(path: &str) -> Vec<RgbImage> {
     }
 }
 
-// ============ Логика пула масок ============
+// ============ Пул масок ============
 
-/// 1. Если user_mask задан — используется ТОЛЬКО она.
-/// 2. Иначе — берём из папки AppData только те, что в folder_mask_names.
-///    Если folder_mask_names пуст или None — берём ВСЕ из папки.
 fn resolve_mask_pool(
     app: &AppHandle,
     user_mask: Option<&str>,
@@ -274,23 +386,16 @@ fn resolve_mask_pool(
     subfolder: &str,
 ) -> Vec<RgbImage> {
     if let Some(path) = user_mask.filter(|s| !s.is_empty()) {
-        println!("[wear] Режим {}: одна юзерская маска \"{}\"", subfolder, path);
         return load_single_mask(path);
     }
 
     let dir = match user_masks_dir(app, subfolder) {
         Ok(d) => d,
-        Err(e) => {
-            println!("[wear] Не удалось получить папку масок: {}", e);
-            return Vec::new();
-        }
+        Err(_) => return Vec::new(),
     };
 
     let all_files = scan_dir(&dir);
-    if all_files.is_empty() {
-        println!("[wear] Папка масок ({}) пуста", subfolder);
-        return Vec::new();
-    }
+    if all_files.is_empty() { return Vec::new(); }
 
     let selected: Vec<PathBuf> = match folder_mask_names {
         Some(names) if !names.is_empty() => {
@@ -302,11 +407,9 @@ fn resolve_mask_pool(
                 })
                 .collect()
         }
-        Some(_) => Vec::new(),  // пустой список → ничего
-        None => all_files,      // null → все (для случая когда JS не передал)
+        Some(_) => Vec::new(),
+        None => all_files,
     };
-
-    println!("[wear] Пул масок ({}): {} шт. из папки", subfolder, selected.len());
 
     let mut images = Vec::with_capacity(selected.len());
     for p in &selected {
@@ -317,7 +420,7 @@ fn resolve_mask_pool(
     images
 }
 
-// ============ Кастомная маска (custom preset) ============
+// ============ Кастомная маска ============
 
 fn load_custom_mask(params: &WearParams) -> Result<Option<(RgbImage, MaskParams)>, String> {
     let enabled = params.mask_enabled.unwrap_or(false);
@@ -333,14 +436,6 @@ fn load_custom_mask(params: &WearParams) -> Result<Option<(RgbImage, MaskParams)
         return Err(format!("Файл маски не найден: {}", path));
     }
 
-    if let Some(ext) = p.extension() {
-        let e = ext.to_string_lossy().to_lowercase();
-        let allowed = ["png", "jpg", "jpeg", "bmp", "tga", "webp"];
-        if !allowed.contains(&e.as_str()) {
-            return Err(format!("Формат .{} не поддерживается", e));
-        }
-    }
-
     let img = image::open(p).map_err(|e| format!("Открытие маски {}: {}", path, e))?;
     if img.width() == 0 || img.height() == 0 {
         return Err("Маска пустая (0×0)".to_string());
@@ -354,10 +449,7 @@ fn load_custom_mask(params: &WearParams) -> Result<Option<(RgbImage, MaskParams)
             let px = rgba.get_pixel(x, y);
             let [r, g, b, a] = px.0;
             let af = a as f32 / 255.0;
-            let cr = (r as f32 * af) as u8;
-            let cg = (g as f32 * af) as u8;
-            let cb = (b as f32 * af) as u8;
-            rgb.put_pixel(x, y, image::Rgb([cr, cg, cb]));
+            rgb.put_pixel(x, y, image::Rgb([(r as f32 * af) as u8, (g as f32 * af) as u8, (b as f32 * af) as u8]));
         }
     }
 
@@ -386,27 +478,69 @@ fn load_custom_mask(params: &WearParams) -> Result<Option<(RgbImage, MaskParams)
 fn apply_mask_to_set(set: &LoadedPbr, mask: &RgbImage, mp: &MaskParams) -> LoadedPbr {
     let mut out = set.clone();
     if mp.affect_albedo {
-        if let Some(a) = out.albedo.as_ref() {
-            out.albedo = Some(apply_custom_mask_to_albedo(a, mask, mp));
-        }
+        if let Some(a) = out.albedo.as_ref() { out.albedo = Some(apply_custom_mask_to_albedo(a, mask, mp)); }
     }
     if mp.affect_roughness {
-        if let Some(r) = out.roughness.as_ref() {
-            out.roughness = Some(apply_custom_mask_to_roughness(r, mask, mp));
-        }
+        if let Some(r) = out.roughness.as_ref() { out.roughness = Some(apply_custom_mask_to_roughness(r, mask, mp)); }
     }
     if mp.affect_normal {
-        if let Some(n) = out.normal.as_ref() {
-            out.normal = Some(apply_custom_mask_to_normal(n, mask, mp, 3.0));
-        }
+        if let Some(n) = out.normal.as_ref() { out.normal = Some(apply_custom_mask_to_normal(n, mask, mp, 3.0)); }
     }
     out
+}
+
+// ============ Decal ============
+
+fn load_decal(params: &WearParams) -> Result<Option<(image::RgbaImage, Option<GrayImage>, DecalParamsFromUI)>, String> {
+    let path = match params.decal_path.as_ref() {
+        Some(p) if !p.is_empty() => p,
+        _ => return Ok(None),
+    };
+
+    let p = Path::new(path);
+    if !p.is_file() {
+        return Err(format!("Файл decal не найден: {}", path));
+    }
+
+    let (rgba, _has_alpha) = open_decal_rgba(p)
+        .ok_or_else(|| format!("Не удалось открыть decal: {}", path))?;
+
+    let height = match params.decal_height_path.as_ref() {
+        Some(hp) if !hp.is_empty() => {
+            let hp_path = Path::new(hp);
+            if hp_path.is_file() {
+                open_height_gray(hp_path)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    };
+
+    let dp = DecalParamsFromUI {
+        pos_x: params.decal_pos_x.unwrap_or(0.0),
+        pos_y: params.decal_pos_y.unwrap_or(0.0),
+        scale: params.decal_scale.unwrap_or(1.0),
+        rotation_deg: params.decal_rotation.unwrap_or(0.0),
+        keep_aspect: params.decal_keep_aspect.unwrap_or(true),
+        opacity: params.decal_opacity.unwrap_or(1.0),
+        affect_albedo: params.decal_affect_albedo.unwrap_or(true),
+        affect_roughness: params.decal_affect_roughness.unwrap_or(false),
+        affect_normal: params.decal_affect_normal.unwrap_or(false),
+        height_intensity: params.decal_height_intensity.unwrap_or(0.0),
+        random_position: params.decal_random_position.unwrap_or(false),
+        random_rotation: params.decal_random_rotation.unwrap_or(false),
+        tile_edge: params.decal_tile_edge.unwrap_or(false),
+    };
+
+    Ok(Some((rgba, height, dp)))
 }
 
 // ============ Параметры из UI ============
 
 fn build_scratch_params(p: &WearParams) -> ScratchParamsFromUI {
     ScratchParamsFromUI {
+        procedural: p.scratch_procedural.unwrap_or(true),
         density: p.scratch_density.unwrap_or(0.5),
         length: p.scratch_length.unwrap_or(0.15),
         thickness: p.scratch_thickness.unwrap_or(2.0),
@@ -417,6 +551,20 @@ fn build_scratch_params(p: &WearParams) -> ScratchParamsFromUI {
         depth: p.scratch_depth.unwrap_or(0.8),
         realistic: p.scratch_realistic.unwrap_or(true),
         rim_highlight: p.scratch_rim.unwrap_or(true),
+        count: p.scratch_count.unwrap_or(3.0),
+        mask_scale: p.scratch_mask_scale.unwrap_or(1.0),
+        deform: p.scratch_deform.unwrap_or(0.3),
+        threshold: p.scratch_threshold.unwrap_or(0.5),
+        sharpness: p.scratch_sharpness.unwrap_or(0.5),
+        color: p.scratch_color.unwrap_or([95, 85, 75]),
+        mask_thickness: p.scratch_mask_thickness.unwrap_or(-0.3),
+        mask_rim: p.scratch_mask_rim.unwrap_or(true),
+        mask_normal: p.scratch_mask_normal.unwrap_or(true),
+        disable_tiling: p.scratch_disable_tiling.unwrap_or(false),
+        pos_x: p.scratch_pos_x.unwrap_or(0.0),
+        pos_y: p.scratch_pos_y.unwrap_or(0.0),
+        rotation_deg: p.scratch_rotation.unwrap_or(0.0),
+        random_rotation: p.scratch_random_rotation.unwrap_or(false),
     }
 }
 
@@ -447,6 +595,45 @@ fn build_rust_params(p: &WearParams) -> RustParamsFromUI {
     }
 }
 
+fn build_streak_params(p: &WearParams) -> StreakParamsFromUI {
+    StreakParamsFromUI {
+        procedural: p.streak_procedural.unwrap_or(true),
+        count: p.streak_count.unwrap_or(25.0),
+        threshold: p.streak_threshold.unwrap_or(0.5),
+        sharpness: p.streak_sharpness.unwrap_or(0.5),
+        color: p.streak_color.unwrap_or([95, 85, 75]),
+        thickness: p.streak_thickness.unwrap_or(0.5),
+        rim_highlight: p.streak_rim.unwrap_or(true),
+        normal_enabled: p.streak_normal.unwrap_or(true),
+        size: p.streak_size.unwrap_or(0.04),
+        stretch: p.streak_stretch.unwrap_or(1.0),
+        waviness: p.streak_waviness.unwrap_or(0.25),
+        pos_x: p.streak_pos_x.unwrap_or(0.0),
+        pos_y: p.streak_pos_y.unwrap_or(0.0),
+        rotation_deg: p.streak_rotation.unwrap_or(0.0),
+        proc_scale: p.streak_proc_scale.unwrap_or(1.0),
+        mask_scale: p.streak_mask_scale.unwrap_or(1.0),
+        deform: p.streak_deform.unwrap_or(0.3),
+        disable_tiling: p.streak_disable_tiling.unwrap_or(false),
+    }
+}
+
+// ═══ Decal random transform — 1-в-1 с JS ═══
+fn rand_from_seed(seed: u32, step: u32) -> f32 {
+    let mut s = seed;
+    for _ in 0..step {
+        s = s.wrapping_mul(1664525).wrapping_add(1013904223);
+    }
+    ((s & 0xFFFFFF) as f32) / 16777216.0
+}
+
+fn random_decal_transform(var_seed: u32) -> (f32, f32, f32) {
+    let r1 = rand_from_seed(var_seed, 1);
+    let r2 = rand_from_seed(var_seed, 2);
+    let r3 = rand_from_seed(var_seed, 3);
+    ((r1 - 0.5) * 0.6, (r2 - 0.5) * 0.6, r3 * 360.0)
+}
+
 // ============ Главная команда ============
 
 #[tauri::command]
@@ -461,20 +648,14 @@ pub async fn generate_wear(app: AppHandle, params: WearParams) -> Result<WearRes
 
     let preset = get_preset(&params.preset).ok_or_else(|| format!("Неизвестный пресет: {}", params.preset))?;
 
-    let mask_pool = if preset.name == "dirt" {
-        resolve_mask_pool(
-            &app,
-            params.user_mask_dirt.as_deref(),
-            params.folder_mask_names_dirt.as_ref(),
-            "dirt",
-        )
+    let mask_pool = if preset.name == "scratches" {
+        resolve_mask_pool(&app, params.user_mask_scratch.as_deref(), params.folder_mask_names_scratch.as_ref(), "scratches")
+    } else if preset.name == "dirt" {
+        resolve_mask_pool(&app, params.user_mask_dirt.as_deref(), params.folder_mask_names_dirt.as_ref(), "dirt")
     } else if preset.name == "rust" {
-        resolve_mask_pool(
-            &app,
-            params.user_mask_rust.as_deref(),
-            params.folder_mask_names_rust.as_ref(),
-            "rust",
-        )
+        resolve_mask_pool(&app, params.user_mask_rust.as_deref(), params.folder_mask_names_rust.as_ref(), "rust")
+    } else if preset.name == "streaks" {
+        resolve_mask_pool(&app, params.user_mask_streak.as_deref(), params.folder_mask_names_streak.as_ref(), "streaks")
     } else {
         Vec::new()
     };
@@ -484,18 +665,22 @@ pub async fn generate_wear(app: AppHandle, params: WearParams) -> Result<WearRes
     let scratch_params = build_scratch_params(&params);
     let dirt_params = build_dirt_params(&params);
     let rust_params = build_rust_params(&params);
+    let streak_params = build_streak_params(&params);
 
-    // Последовательная генерация: emit из main thread доходит до фронта.
-    // par_iter ломает прогресс — события копятся и уходят пачкой в конце.
+    let decal_data = if preset.name == "decal" {
+        load_decal(&params)?
+    } else {
+        None
+    };
+
     let mut variations: Vec<String> = Vec::with_capacity(params.count as usize);
 
     for i in 1..=params.count {
-        let var_seed = params.seed.wrapping_add(i * 7919);
+        let var_seed = params.seed.wrapping_add(i.wrapping_mul(7919));
         let noise = TilingNoise::new(var_seed);
 
         let folder = format!("{}/wear_{:02}", params.output_dir, i);
-        std::fs::create_dir_all(&folder)
-            .map_err(|e| format!("create_dir_all {}: {}", folder, e))?;
+        std::fs::create_dir_all(&folder).map_err(|e| format!("create_dir_all {}: {}", folder, e))?;
 
         let empty_var: Vec<MaskInstance> = Vec::new();
         let instances_for_this = params.instances_per_variation
@@ -503,12 +688,35 @@ pub async fn generate_wear(app: AppHandle, params: WearParams) -> Result<WearRes
             .and_then(|v| v.get((i - 1) as usize))
             .unwrap_or(&empty_var);
 
-        let warped = (preset.apply)(
-            &set, &noise, amount,
-            &scratch_params, &dirt_params, &rust_params,
-            &mask_pool,
-            instances_for_this,
-        );
+        let warped = if preset.name == "decal" {
+            if let Some((ref rgba, ref height_opt, ref dp)) = decal_data {
+                let use_random = i > 1 && (dp.random_position || dp.random_rotation);
+                let dp_final = if use_random {
+                    let (rx, ry, rr) = random_decal_transform(var_seed);
+                    let mut dp2 = *dp;
+                    if dp.random_position {
+                        dp2.pos_x = rx;
+                        dp2.pos_y = ry;
+                    }
+                    if dp.random_rotation {
+                        dp2.rotation_deg = rr;
+                    }
+                    dp2
+                } else {
+                    *dp
+                };
+                crate::core::pbr_ops::apply_decal_to_set(&set, rgba, height_opt.as_ref(), &dp_final)
+            } else {
+                set.clone()
+            }
+        } else {
+            (preset.apply)(
+                &set, &noise, amount,
+                &scratch_params, &dirt_params, &rust_params, &streak_params,
+                &mask_pool,
+                instances_for_this,
+            )
+        };
 
         let final_set = if let Some((ref mask_img, ref mp)) = custom_mask {
             apply_mask_to_set(&warped, mask_img, mp)
@@ -541,17 +749,13 @@ pub async fn generate_wear(app: AppHandle, params: WearParams) -> Result<WearRes
         variations.push(folder);
 
         let _ = app.emit("wear_progress", WearProgress {
-            current: i,
-            total: params.count,
-            stage: "generating".into(),
+            current: i, total: params.count, stage: "generating".into(),
         });
     }
 
     let elapsed = start.elapsed().as_millis() as u64;
     let _ = app.emit("wear_progress", WearProgress {
-        current: params.count,
-        total: params.count,
-        stage: "done".into(),
+        current: params.count, total: params.count, stage: "done".into(),
     });
     Ok(WearResult { variations, elapsed_ms: elapsed })
 }

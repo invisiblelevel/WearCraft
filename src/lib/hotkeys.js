@@ -30,6 +30,27 @@ function closeAnyModal() {
   return false;
 }
 
+// ═══ Зум UI — ступени ═══
+const ZOOM_STEPS = [0.75, 0.90, 1.0, 1.10, 1.25, 1.50, 1.75, 2.0];
+
+function zoomIn() {
+  const cur = ui.zoom;
+  const next = ZOOM_STEPS.find(s => s > cur + 0.001);
+  if (next === undefined) return;
+  ui.zoom = next;
+}
+
+function zoomOut() {
+  const cur = ui.zoom;
+  const prev = [...ZOOM_STEPS].reverse().find(s => s < cur - 0.001);
+  if (prev === undefined) return;
+  ui.zoom = prev;
+}
+
+function zoomReset() {
+  ui.zoom = 1.0;
+}
+
 function onKeyDown(e) {
   // Escape — закрыть модалку
   if (e.code === 'Escape') {
@@ -71,6 +92,30 @@ function onKeyDown(e) {
     e.preventDefault();
     pushLog('[Hotkey] Ctrl+S — Save');
     ui.saveOpen = true;
+    return;
+  }
+
+  // Ctrl+= / Ctrl++ — зум вверх
+  if (e.code === 'Equal' || e.code === 'NumpadAdd') {
+    e.preventDefault();
+    pushLog('[Hotkey] Zoom +');
+    zoomIn();
+    return;
+  }
+
+  // Ctrl+- — зум вниз
+  if (e.code === 'Minus' || e.code === 'NumpadSubtract') {
+    e.preventDefault();
+    pushLog('[Hotkey] Zoom −');
+    zoomOut();
+    return;
+  }
+
+  // Ctrl+0 — сброс зума
+  if (e.code === 'Digit0' || e.code === 'Numpad0') {
+    e.preventDefault();
+    pushLog('[Hotkey] Zoom 100%');
+    zoomReset();
     return;
   }
 }

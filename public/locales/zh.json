@@ -1,6 +1,6 @@
 {
   "app.title": "WearCraft",
-  "app.version": "v1.0.0",
+  "app.version": "v1.1.0",
 
   "rail.load": "加载 3D",
   "rail.loadpbr": "加载 PBR",
@@ -13,6 +13,7 @@
   "preset.scratches": "划痕",
   "preset.dirt": "斑点",
   "preset.rust": "锈蚀",
+  "preset.streaks": "流痕",
 
   "preset.custom": "自定义",
   "preset.custom_warn": "未选择预设。请加载遮罩或选择划痕/斑点/锈蚀。",
@@ -33,6 +34,8 @@
   "mask.position": "位置",
   "mask.pos_reset": "重置",
 
+  "scratch.mode_procedural": "程序化",
+  "scratch.mode_masks": "遮罩",
   "scratch.title": "划痕设置",
   "scratch.reset": "重置为默认值",
   "scratch.density": "密度",
@@ -62,6 +65,18 @@
   "dirt.masks_click_unselect": "点击：返回所有遮罩池",
   "dirt.masks_mode_single": "仅使用",
   "dirt.masks_mode_pool": "使用所有遮罩（池）",
+  
+  "streak.title": "流痕设置",
+  "streak.mode_procedural": "程序化",
+  "streak.mode_masks": "遮罩",
+  "streak.count": "密度",
+  "streak.size": "液滴大小",
+  "streak.stretch": "拉伸",
+  "streak.threshold": "阈值",
+  "streak.sharpness": "锐度",
+  "streak.color": "颜色",
+  "streak.thickness": "厚度",
+  "streak.waviness": "波动",
 
   "rust.title": "锈蚀设置",
   "rust.count": "数量",
@@ -81,9 +96,9 @@
   "rust.masks_mode_pool": "使用所有遮罩（池）",
   
 
-  "params.title": "参数",
+  "params.title": "生成变体",
   "params.variations.label": "变体数量",
-  "params.variations.hint": "磨损变体数量（5–50）",
+  "params.variations.hint": "磨损变体数量（1–50）",
   "params.warp.label": "扭曲",
   "params.warp.hint": "图案位移幅度",
   "params.amount.label": "强度",
@@ -91,6 +106,7 @@
   "params.seed.label": "种子",
   "params.seed.random": "随机",
   "params.seed.manual": "手动",
+  "params.disable_tiling": "禁用平铺",
 
   "maps.title": "贴图",
   "maps.albedo": "反照率",
@@ -152,8 +168,10 @@
 
   "info.support.title": "支持项目",
   "info.support.body": "WearCraft 帮你省时间了吧？给大叔扔俩钱买烟去。",
-
+  
+  "settings.tab.environment": "环境",
   "settings.tab.performance": "性能",
+  "settings.tab.interface": "界面",
   "settings.tab.saving": "保存",
   "settings.performance.title": "性能",
   "settings.preview_resolution": "预览分辨率",
@@ -172,6 +190,25 @@
   "settings.save_dir.pick": "选择文件夹...",
   "settings.reset": "重置为默认",
   "settings.close": "关闭",
+  "settings.interface.title": "界面",
+  "settings.zoom": "界面缩放",
+  "settings.zoom.hint": "增大或减小界面尺寸",
+  "settings.zoom_hotkeys": "快捷键",
+  "settings.zoom_hotkeys.hint": "Ctrl + = / − / 0",
+
+  "settings.environment.title": "环境",
+  "settings.environment.intensity": "强度",
+  "settings.environment.intensity.hint": "环境亮度（0–200%）",
+  "settings.environment.show_bg": "场景背景",
+  "settings.environment.show_bg.hint": "将 HDR 显示为背景",
+  "settings.environment.show_bg.check": "显示 HDR 背景",
+
+  "env.neutral": "中性",
+  "env.warm": "暖色",
+  "env.cool": "冷色",
+  "env.white": "白色",
+  "env.night": "夜晚",
+
 
   "drop.conflict_title": "选择文件",
   "drop.conflict_hint": "找到多个相同类型的贴图。请选择要使用的。",
@@ -221,5 +258,35 @@
   "info.tab.manual": "手册",
   "info.manual.title": "用户手册",
   "info.manual.body": "WearCraft 所有功能的详细指南。将在浏览器中打开。",
-  "info.manual.open": "打开手册"
+  "info.manual.open": "打开手册",
+
+  "decal.title": "贴花",
+  "decal.section_image": "图像",
+  "decal.section_position": "位置",
+  "decal.section_appearance": "外观",
+  "decal.section_affect": "影响",
+  "decal.section_height": "高度",
+  "decal.load": "加载图像",
+  "decal.load_height": "加载高度图",
+  "decal.height_label": "高度图",
+  "decal.pos_x": "位置 X",
+  "decal.pos_y": "位置 Y",
+  "decal.scale": "缩放",
+  "decal.rotation": "旋转",
+  "decal.keep_aspect": "保持宽高比",
+  "decal.opacity": "不透明度",
+  "decal.affect_albedo": "影响反照率",
+  "decal.affect_roughness": "影响粗糙度",
+  "decal.affect_normal": "影响法线",
+  "decal.height_intensity": "高度强度",
+  "decal.reset": "重置",
+  "decal.exit": "退出贴花",
+  "decal.height_from_image": "或从图像",
+  "decal.random_position": "随机位置",
+  "decal.random_rotation": "随机旋转",
+  "decal.tile_edge": "边缘平铺",
+  
+  "rail.generate_need_mask": "请加载遮罩",
+  "rail.generate_need_decal": "请加载图像",
+  "streak.length": "长度"
 }

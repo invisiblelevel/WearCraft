@@ -1,10 +1,16 @@
 <script>
-  import { FolderOpen, Palette, Dices, Save, Settings, Trash2 } from '@lucide/svelte';
+  import { FolderOpen, Palette, Save, Settings, Trash2, Stamp } from '@lucide/svelte';
   import { t } from '../i18n.svelte.js';
-  import { pbr, ui } from '../lib/stores.svelte.js';
-  import { onLoadModel, onLoadPBR, onClearPBR, onGenerateWear } from '../lib/actions.svelte.js';
+  import { pbr, ui, params, setPreset } from '../lib/stores.svelte.js';
+  import { onLoadModel, onLoadPBR, onClearPBR } from '../lib/actions.svelte.js';
 
   let hasPbr = $derived(Object.keys(pbr.textures).length > 0);
+  let isDecal = $derived(params.preset === 'decal');
+
+  function onDecalClick() {
+    if (params.preset !== 'decal') setPreset('decal');
+    else setPreset('custom');
+  }
 </script>
 
 <aside class="rail">
@@ -16,9 +22,15 @@
     <Palette size={20} />
     <span class="lbl">{t('rail.loadpbr')}</span>
   </button>
-  <button class="rail-btn" disabled={ui.busy} title={t('rail.generate')} onclick={onGenerateWear}>
-    <Dices size={20} />
-    <span class="lbl">{t('rail.generate')}</span>
+  <button
+    class="rail-btn"
+    class:active={isDecal}
+    disabled={ui.busy}
+    title={t('decal.title')}
+    onclick={onDecalClick}
+  >
+    <Stamp size={20} />
+    <span class="lbl">{t('decal.title')}</span>
   </button>
   <button class="rail-btn" disabled={ui.busy} title={t('rail.save')} onclick={() => ui.saveOpen = true}>
     <Save size={20} />
@@ -63,12 +75,17 @@
     border-radius: 6px;
     cursor: pointer;
     font-size: 10px;
-    transition: opacity 0.15s;
+    transition: opacity 0.15s, color 0.15s, border-color 0.15s;
   }
   .rail-btn:hover:not(:disabled) {
     background: var(--bg-2);
     color: var(--fg-0);
     border-color: var(--border);
+  }
+  .rail-btn.active {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: var(--bg-2);
   }
   .rail-btn:disabled { opacity: 0.4; cursor: not-allowed; }
   .rail-btn.danger:hover:not(:disabled) { color: var(--danger); border-color: var(--danger); }

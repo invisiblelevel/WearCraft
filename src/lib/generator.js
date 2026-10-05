@@ -3,12 +3,19 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
 import {
-  pbr, params, scratchParams, dirtParams, rustParams, maskParams,
+  pbr, params, scratchParams, dirtParams, rustParams, streakParams, maskParams,
+  decalParams,
   ui, settings, pushLog, pushToast, showProgress, setProgress, hideProgress
 } from './stores.svelte.js';
 import { clearVariationCache, loadVariation } from './variation-loader.js';
 import { generateInstances, generateFixedInstance, instancesForRust } from './instances.js';
 import { resolveMaskCount } from './mask-source.js';
+
+function seedAngle(varSeed) {
+  let s = varSeed >>> 0;
+  s = (s * 1664525 + 1013904223) >>> 0;
+  return ((s & 0xFFFFFF) / 16777216) * Math.PI * 2;
+}
 
 async function resolveOutputDir() {
   if (settings.saveMode === 'always' && settings.saveDir) return settings.saveDir;
@@ -17,21 +24,37 @@ async function resolveOutputDir() {
   return picked;
 }
 
-/**
- * Instances для всех вариаций.
- * Юзерская маска → вариация 1 = фиксированный instance, 2..N = рандом с пулом 1.
- * Библиотека → рандом с глобальными posX/posY/rotation от юзера.
- */
 async function buildInstancesPerVariation() {
   const isRust = params.preset === 'rust';
   const isDirt = params.preset === 'dirt';
-  if (!isRust && !isDirt) return [];
+  const isStreaks = params.preset === 'streaks';
+  const isScratch = params.preset === 'scratches';
+
+  if (isStreaks && streakParams.procedural) return [];
+  if (isScratch && scratchParams.procedural) return [];
+  if (params.preset === 'decal') return [];
+  if (!isRust && !isDirt && !isStreaks && !isScratch) return [];
 
   const totalVariations = params.variations;
-  const count = isRust ? (rustParams.count || 3) : (dirtParams.count || 3);
-  const scale = isRust ? (rustParams.scale || 1) : (dirtParams.scale || 1);
-  const p = isRust ? rustParams : dirtParams;
-  const userMask = isRust ? settings.userMaskRust : settings.userMaskDirt;
+
+  let p;
+  if (isRust) p = rustParams;
+  else if (isDirt) p = dirtParams;
+  else if (isStreaks) p = streakParams;
+  else p = scratchParams;
+
+  const count = p.count || 3;
+
+  let scale;
+  if (isStreaks) scale = streakParams.maskScale || 1;
+  else if (isScratch) scale = scratchParams.maskScale || 1;
+  else scale = p.scale || 1;
+
+  let userMask;
+  if (isRust) userMask = settings.userMaskRust;
+  else if (isStreaks) userMask = settings.userMaskStreak;
+  else if (isScratch) userMask = settings.userMaskScratch;
+  else userMask = settings.userMaskDirt;
 
   const result = [];
   for (let i = 1; i <= totalVariations; i++) {
@@ -39,25 +62,40 @@ async function buildInstancesPerVariation() {
 
     let inst;
     if (userMask && i === 1) {
-      // Вариация 1 — фиксированная позиция из UI (то, что видно в превью)
-      const pos = isRust ? settings.userMaskRustPos : settings.userMaskDirtPos;
+      const pos = isRust ? settings.userMaskRustPos
+                : isStreaks ? settings.userMaskStreakPos
+                : isScratch ? settings.userMaskScratchPos
+                : settings.userMaskDirtPos;
       inst = [generateFixedInstance(pos)];
     } else if (userMask) {
-      // Вариации 2..N — рандом, пул масок = 1 (юзерская)
+      let useRandomRot = p.randomRotation;
+      let globalRot = p.rotation * Math.PI / 180;
+      if (isStreaks) {
+        useRandomRot = false;
+        globalRot = p.randomRotation ? seedAngle(varSeed) : p.rotation * Math.PI / 180;
+      }
       inst = generateInstances(varSeed, count, scale, 1, {
         globalPosX: p.posX,
         globalPosY: p.posY,
-        globalRotation: p.rotation * Math.PI / 180,
-        randomRotation: p.randomRotation,
+        globalRotation: globalRot,
+        randomRotation: useRandomRot,
+        randomFlip: isStreaks ? false : true,
       });
     } else {
-      // Библиотека масок — рандом + глобальные posX/posY/rotation
       const maskCount = await resolveMaskCount(params.preset);
+      let useRandomRot = p.randomRotation;
+      let globalRot = p.rotation * Math.PI / 180;
+      if (isStreaks) {
+        useRandomRot = false;
+        globalRot = p.randomRotation ? seedAngle(varSeed) : p.rotation * Math.PI / 180;
+      }
       inst = generateInstances(varSeed, count, scale, maskCount, {
         globalPosX: p.posX,
         globalPosY: p.posY,
-        globalRotation: p.rotation * Math.PI / 180,
-        randomRotation: p.randomRotation,
+        globalRotation: globalRot,
+        randomRotation: useRandomRot,
+        randomFlip: isStreaks ? false : true,
+        tileable: !p.disableTiling,
       });
     }
 
@@ -108,6 +146,8 @@ export async function generateWear() {
 
         instancesPerVariation,
 
+        // Scratches
+        scratchProcedural: scratchParams.procedural,
         scratchDensity:    scratchParams.density,
         scratchLength:     scratchParams.length,
         scratchThickness:  scratchParams.thickness,
@@ -118,7 +158,24 @@ export async function generateWear() {
         scratchDepth:      scratchParams.depth,
         scratchRealistic:  scratchParams.realistic,
         scratchRim:        scratchParams.rimHighlight,
+        scratchCount:      scratchParams.count,
+        scratchMaskScale:  scratchParams.maskScale,
+        scratchDeform:     scratchParams.deform,
+        scratchThreshold:  scratchParams.threshold,
+        scratchSharpness:  scratchParams.sharpness,
+        scratchColor:      scratchParams.color,
+        scratchMaskThickness: scratchParams.maskThickness,
+        scratchMaskRim:    scratchParams.maskRimHighlight,
+        scratchMaskNormal: scratchParams.maskNormalEnabled,
+        scratchDisableTiling: scratchParams.disableTiling,
+        scratchPosX:       scratchParams.posX,
+        scratchPosY:       scratchParams.posY,
+        scratchRotation:   scratchParams.rotation,
+        scratchRandomRotation: scratchParams.randomRotation,
+        userMaskScratch:   settings.userMaskScratch || null,
+        folderMaskNamesScratch: settings.folderMaskNamesScratch || [],
 
+        // Dirt
         dirtCount:      dirtParams.count,
         dirtScale:      dirtParams.scale,
         dirtDeform:     dirtParams.deform,
@@ -131,6 +188,7 @@ export async function generateWear() {
         userMaskDirt:   settings.userMaskDirt || null,
         folderMaskNamesDirt: settings.folderMaskNamesDirt || [],
 
+        // Rust
         rustCount:      rustParams.count,
         rustScale:      rustParams.scale,
         rustDeform:     rustParams.deform,
@@ -142,6 +200,29 @@ export async function generateWear() {
         userMaskRust:   settings.userMaskRust || null,
         folderMaskNamesRust: settings.folderMaskNamesRust || [],
 
+        // Streaks
+        streakProcedural: streakParams.procedural,
+        streakCount:      streakParams.count,
+        streakThreshold:  streakParams.threshold,
+        streakSharpness:  streakParams.sharpness,
+        streakColor:      streakParams.color,
+        streakThickness:  streakParams.thickness,
+        streakRim:        streakParams.rimHighlight,
+        streakNormal:     streakParams.normalEnabled,
+        streakSize:       streakParams.size,
+        streakStretch:    streakParams.stretch,
+        streakWaviness:   streakParams.waviness,
+        streakPosX:       streakParams.posX,
+        streakPosY:       streakParams.posY,
+        streakRotation:   streakParams.rotation,
+        streakProcScale:  streakParams.procScale,
+        streakMaskScale:  streakParams.maskScale,
+        streakDeform:     streakParams.deform,
+        streakDisableTiling: streakParams.disableTiling,
+        userMaskStreak:   settings.userMaskStreak || null,
+        folderMaskNamesStreak: settings.folderMaskNamesStreak || [],
+
+        // Custom mask
         maskEnabled:         maskParams.enabled,
         maskPath:            maskParams.path || null,
         maskKind:            maskParams.kind,
@@ -154,6 +235,23 @@ export async function generateWear() {
         maskAffectAlbedo:    maskParams.affectAlbedo,
         maskAffectRoughness: maskParams.affectRoughness,
         maskAffectNormal:    maskParams.affectNormal,
+
+        // Decal
+        decalPath:            decalParams.path || null,
+        decalHeightPath:      decalParams.heightPath || null,
+        decalPosX:            decalParams.posX,
+        decalPosY:            decalParams.posY,
+        decalScale:           decalParams.scale,
+        decalRotation:        decalParams.rotation,
+        decalKeepAspect:      decalParams.keepAspect,
+        decalOpacity:         decalParams.opacity,
+        decalAffectAlbedo:    decalParams.affectAlbedo,
+        decalAffectRoughness: decalParams.affectRoughness,
+        decalAffectNormal:    decalParams.affectNormal,
+        decalHeightIntensity: decalParams.heightIntensity,
+        decalRandomPosition:  decalParams.randomPosition,
+        decalRandomRotation:  decalParams.randomRotation,
+        decalTileEdge:        decalParams.tileEdge,
       }
     });
 
