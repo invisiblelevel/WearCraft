@@ -1,6 +1,6 @@
 {
   "app.title": "WearCraft",
-  "app.version": "v1.1.0",
+  "app.version": "v1.1.1",
 
   "rail.load": "加载 3D",
   "rail.loadpbr": "加载 PBR",
@@ -11,12 +11,12 @@
 
   "preset.title": "预设",
   "preset.scratches": "划痕",
-  "preset.dirt": "斑点",
+  "preset.dirt": "污垢",
   "preset.rust": "锈蚀",
   "preset.streaks": "流痕",
 
   "preset.custom": "自定义",
-  "preset.custom_warn": "未选择预设。请加载遮罩或选择划痕/斑点/锈蚀。",
+  "preset.custom_warn": "未选择预设。请加载遮罩或选择划痕/污垢/锈蚀。",
 
   "mask.title": "遮罩",
   "mask.load": "加载 PNG",
@@ -34,7 +34,7 @@
   "mask.position": "位置",
   "mask.pos_reset": "重置",
 
-  "scratch.mode_procedural": "程序化",
+  "scratch.mode_procedural": "程序化生成",
   "scratch.mode_masks": "遮罩",
   "scratch.title": "划痕设置",
   "scratch.reset": "重置为默认值",
@@ -46,10 +46,10 @@
   "scratch.clusters": "聚集",
   "scratch.normal_enabled": "影响法线",
   "scratch.realistic": "逼真划痕",
-  "scratch.rim_highlight": "亮边缘",
+  "scratch.rim_highlight": "边缘高光",
   "scratch.depth": "深度",
 
-  "dirt.title": "斑点设置",
+  "dirt.title": "污垢设置",
   "dirt.count": "数量",
   "dirt.scale": "大小",
   "dirt.deform": "变形",
@@ -57,7 +57,7 @@
   "dirt.sharpness": "锐度",
   "dirt.color": "颜色",
   "dirt.thickness": "厚度",
-  "dirt.masks_label": "斑点遮罩",
+  "dirt.masks_label": "污垢遮罩",
   "dirt.masks_add": "添加遮罩",
   "dirt.masks_clear": "清空列表",
   "dirt.masks_builtin_hint": "将仅使用内置遮罩。添加自己的以扩展。",
@@ -67,11 +67,12 @@
   "dirt.masks_mode_pool": "使用所有遮罩（池）",
   
   "streak.title": "流痕设置",
-  "streak.mode_procedural": "程序化",
+  "streak.mode_procedural": "程序化生成",
   "streak.mode_masks": "遮罩",
   "streak.count": "密度",
   "streak.size": "液滴大小",
   "streak.stretch": "拉伸",
+  "streak.stretch_y": "Y 轴拉伸",
   "streak.threshold": "阈值",
   "streak.sharpness": "锐度",
   "streak.color": "颜色",
@@ -85,7 +86,7 @@
   "rust.threshold": "阈值",
   "rust.sharpness": "锐度",
   "rust.volume": "体积",
-  "rust.rim_highlight": "深色边缘",
+  "rust.rim_highlight": "边缘高光",
   "rust.masks_label": "锈蚀遮罩",
   "rust.masks_add": "添加遮罩",
   "rust.masks_clear": "清空列表",
@@ -95,6 +96,16 @@
   "rust.masks_mode_single": "仅使用",
   "rust.masks_mode_pool": "使用所有遮罩（池）",
   
+  "geometry_limit.title": "按几何限制",
+  "geometry_limit.enable": "启用几何限制",
+  "geometry_limit.no_uv": "模型没有 UV — 限制不可用。",
+  "geometry_limit.mode": "方向",
+  "geometry_limit.mode_sides": "仅侧面",
+  "geometry_limit.mode_top": "仅顶部",
+  "geometry_limit.mode_bottom": "仅底部",
+  "geometry_limit.mode_top_bottom": "顶部和底部",
+  "geometry_limit.softness": "过渡柔和度",
+  "geometry_limit.invert": "反转",
 
   "params.title": "生成变体",
   "params.variations.label": "变体数量",
@@ -103,7 +114,7 @@
   "params.warp.hint": "图案位移幅度",
   "params.amount.label": "强度",
   "params.amount.hint": "磨损的应用强度",
-  "params.seed.label": "种子",
+  "params.seed.label": "随机种子",
   "params.seed.random": "随机",
   "params.seed.manual": "手动",
   "params.disable_tiling": "禁用平铺",
@@ -167,8 +178,8 @@
   "info.version.license": "许可证",
 
   "info.support.title": "支持项目",
-  "info.support.body": "WearCraft 帮你省时间了吧？给大叔扔俩钱买烟去。",
-  
+  "info.support.body": "觉得 WearCraft 帮你省了时间？给大佬递根烟，赞助点买烟钱呗。",
+
   "settings.tab.environment": "环境",
   "settings.tab.performance": "性能",
   "settings.tab.interface": "界面",
@@ -208,7 +219,6 @@
   "env.cool": "冷色",
   "env.white": "白色",
   "env.night": "夜晚",
-
 
   "drop.conflict_title": "选择文件",
   "drop.conflict_hint": "找到多个相同类型的贴图。请选择要使用的。",

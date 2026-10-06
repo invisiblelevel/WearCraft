@@ -1,4 +1,4 @@
-<script>
+﻿<script>
   import { FolderOpen, Palette, Save, Settings, Trash2, Stamp } from '@lucide/svelte';
   import { t } from '../i18n.svelte.js';
   import { pbr, ui, params, setPreset } from '../lib/stores.svelte.js';
@@ -14,15 +14,15 @@
 </script>
 
 <aside class="rail">
-  <button class="rail-btn" disabled={ui.busy} title={t('rail.load')} onclick={onLoadModel}>
+  <button type="button" class="rail-btn" disabled={ui.busy} title={t('rail.load')} onclick={onLoadModel}>
     <FolderOpen size={20} />
     <span class="lbl">{t('rail.load')}</span>
   </button>
-  <button class="rail-btn" disabled={ui.busy} title={t('rail.loadpbr')} onclick={onLoadPBR}>
+  <button type="button" class="rail-btn" disabled={ui.busy} title={t('rail.loadpbr')} onclick={onLoadPBR}>
     <Palette size={20} />
     <span class="lbl">{t('rail.loadpbr')}</span>
   </button>
-  <button
+  <button type="button"
     class="rail-btn"
     class:active={isDecal}
     disabled={ui.busy}
@@ -32,18 +32,18 @@
     <Stamp size={20} />
     <span class="lbl">{t('decal.title')}</span>
   </button>
-  <button class="rail-btn" disabled={ui.busy} title={t('rail.save')} onclick={() => ui.saveOpen = true}>
+  <button type="button" class="rail-btn" disabled={ui.busy} title={t('rail.save')} onclick={() => ui.saveOpen = true}>
     <Save size={20} />
     <span class="lbl">{t('rail.save')}</span>
   </button>
   <div class="rail-spacer"></div>
   {#if hasPbr}
-    <button class="rail-btn danger" disabled={ui.busy} title={t('rail.clearpbr')} onclick={onClearPBR}>
+    <button type="button" class="rail-btn danger" disabled={ui.busy} title={t('rail.clearpbr')} onclick={onClearPBR}>
       <Trash2 size={20} />
       <span class="lbl">{t('rail.clearpbr')}</span>
     </button>
   {/if}
-  <button class="rail-btn" title={t('rail.settings')} onclick={() => ui.settingsOpen = true}>
+  <button type="button" class="rail-btn" title={t('rail.settings')} onclick={() => ui.settingsOpen = true}>
     <Settings size={20} />
     <span class="lbl">{t('rail.settings')}</span>
   </button>

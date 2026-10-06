@@ -1,4 +1,4 @@
-<script>
+﻿<script>
   import { t } from '../i18n.svelte.js';
   import { ui, pushLog } from '../lib/stores.svelte.js';
 
@@ -58,8 +58,8 @@
         {/each}
       </div>
       <div class="conflict-foot">
-        <button class="btn-cancel" onclick={cancel}>Отмена</button>
-        <button class="btn-apply" onclick={confirm}>OK</button>
+        <button type="button" class="btn-cancel" onclick={cancel}>Отмена</button>
+        <button type="button" class="btn-apply" onclick={confirm}>OK</button>
       </div>
     </div>
   </div>

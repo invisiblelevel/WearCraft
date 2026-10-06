@@ -1,4 +1,4 @@
-<script>
+﻿<script>
   import { t } from './i18n.svelte.js';
   import { invoke } from '@tauri-apps/api/core';
 
@@ -20,12 +20,12 @@
   <div class="modal" role="dialog" aria-modal="true">
     <header class="modal-head">
       <div class="tabs">
-        <button class:active={tab === 'about'}   onclick={() => tab = 'about'}>   {t('info.tab.about')}   </button>
-        <button class:active={tab === 'version'} onclick={() => tab = 'version'}> {t('info.tab.version')} </button>
-        <button class:active={tab === 'support'} onclick={() => tab = 'support'}> {t('info.tab.support')} </button>
-        <button class:active={tab === 'manual'}  onclick={() => tab = 'manual'}>  {t('info.tab.manual')}  </button>
+        <button type="button" class:active={tab === 'about'}   onclick={() => tab = 'about'}>   {t('info.tab.about')}   </button>
+        <button type="button" class:active={tab === 'version'} onclick={() => tab = 'version'}> {t('info.tab.version')} </button>
+        <button type="button" class:active={tab === 'support'} onclick={() => tab = 'support'}> {t('info.tab.support')} </button>
+        <button type="button" class:active={tab === 'manual'}  onclick={() => tab = 'manual'}>  {t('info.tab.manual')}  </button>
       </div>
-      <button class="close" onclick={onclose} aria-label="Close">✕</button>
+      <button type="button" class="close" onclick={onclose} aria-label="Close">✕</button>
     </header>
 
     <div class="modal-body">
@@ -42,8 +42,8 @@
         <h2>{t('info.version.title')}</h2>
         <table class="kv">
           <tbody>
-            <tr><td>{t('info.version.app')}</td>      <td>WearCraft v1.0.0</td></tr>
-            <tr><td>{t('info.version.date')}</td>     <td>2026-10-03</td></tr>
+            <tr><td>{t('info.version.app')}</td>      <td>WearCraft v1.1.1</td></tr>
+            <tr><td>{t('info.version.date')}</td>     <td>2026-10-06</td></tr>
             <tr><td>{t('info.version.author')}</td>   <td>INV.LVL</td></tr>
             <tr><td>{t('info.version.stack')}</td>    <td>Tauri + Svelte + Three.js</td></tr>
             <tr><td>{t('info.version.license')}</td>  <td>MIT</td></tr>
@@ -58,7 +58,7 @@
           <span class="wallet-label">BTC</span>
           <div class="addr">
             <code>bc1q2ka70s4vtmrskandqj8l4d6n3kdxyxa7kf3wf7</code>
-            <button onclick={() => navigator.clipboard.writeText('bc1q2ka70s4vtmrskandqj8l4d6n3kdxyxa7kf3wf7')}>📋</button>
+            <button type="button" onclick={() => navigator.clipboard.writeText('bc1q2ka70s4vtmrskandqj8l4d6n3kdxyxa7kf3wf7')}>📋</button>
           </div>
         </div>
 
@@ -66,14 +66,14 @@
           <span class="wallet-label">USDT (TRC-20)</span>
           <div class="addr">
             <code>TUjY9p6oxKmeCQwNZwMfHqHdXuabaHpgT7</code>
-            <button onclick={() => navigator.clipboard.writeText('TUjY9p6oxKmeCQwNZwMfHqHdXuabaHpgT7')}>📋</button>
+            <button type="button" onclick={() => navigator.clipboard.writeText('TUjY9p6oxKmeCQwNZwMfHqHdXuabaHpgT7')}>📋</button>
           </div>
         </div>
 
       {:else if tab === 'manual'}
         <h2>{t('info.manual.title')}</h2>
         <p>{t('info.manual.body')}</p>
-        <button class="manual-btn" onclick={openManual}>
+        <button type="button" class="manual-btn" onclick={openManual}>
           {t('info.manual.open')}
         </button>
       {/if}

@@ -52,6 +52,12 @@ function zoomReset() {
 }
 
 function onKeyDown(e) {
+  // Игнорируем, если фокус в input/textarea/select
+  const tag = e.target?.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable) {
+    // Разрешаем только Escape (закрыть модалку)
+    if (e.key !== 'Escape') return;
+  }
   // Escape — закрыть модалку
   if (e.code === 'Escape') {
     if (closeAnyModal()) {

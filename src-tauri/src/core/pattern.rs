@@ -29,11 +29,16 @@ fn fbm01(noise: &TilingNoise, x: f32, y: f32, w: f32, h: f32, octaves: u32, pers
 pub struct ScratchParams {
     pub density: f32, pub length: f32, pub thickness: f32,
     pub waviness: f32, pub branches: f32, pub clusters: f32,
+    pub pos_x: f32, pub pos_y: f32,
 }
 
 impl Default for ScratchParams {
     fn default() -> Self {
-        Self { density: 0.5, length: 0.15, thickness: 2.0, waviness: 0.3, branches: 0.1, clusters: 0.3 }
+        Self {
+            density: 0.5, length: 0.15, thickness: 2.0,
+            waviness: 0.3, branches: 0.1, clusters: 0.3,
+            pos_x: 0.0, pos_y: 0.0,
+        }
     }
 }
 
@@ -63,7 +68,7 @@ fn draw_scratch_curve(
     }
     let thick_peak = rng.gen_range(0.3..0.7_f32);
     let thick_max_mult = rng.gen_range(1.3..2.5_f32);
-    let intensity = base_intensity * rng.gen_range(0.4..1.0_f32);
+    let intensity = (base_intensity * rng.gen_range(0.85..1.0_f32)).min(1.0);
     for step in 0..=steps {
         let t = step as f32 / steps as f32;
         let mut in_break = false;
@@ -74,7 +79,7 @@ fn draw_scratch_curve(
         let by = omt * omt * sy + 2.0 * omt * t * cy + t * t * ey;
         let thick_factor = { let d = (t - thick_peak).abs(); let g = (-d * d * 20.0).exp(); 1.0 + (thick_max_mult - 1.0) * g };
         let thickness = (base_thickness * thick_factor).max(0.5);
-        let end_fade = smoothstep(0.0, 0.08, t) * smoothstep(1.0, 0.92, t);
+        let end_fade = smoothstep(0.0, 0.05, t) * smoothstep(1.0, 0.95, t);
         let intensity_t = (intensity * end_fade).min(1.0);
         let dx = 2.0 * omt * (cx - sx) + 2.0 * t * (ex - cx);
         let dy = 2.0 * omt * (cy - sy) + 2.0 * t * (ey - cy);
@@ -87,7 +92,9 @@ fn draw_scratch_curve(
             let toff = (ti as f32 / steps_th.max(1) as f32 - 0.5) * thickness;
             let tx = bx + nx * toff;
             let ty = by + ny * toff;
-            let edge_fade = 1.0 - (toff.abs() / half).min(1.0) * 0.7;
+            // Жёсткие края: интенсивность падает только у самой границы (последние 15%)
+            let rel = (toff.abs() / half).min(1.0);
+            let edge_fade = if rel < 0.85 { 1.0 } else { 1.0 - (rel - 0.85) / 0.15 * 0.6 };
             let v = (intensity_t * edge_fade).min(1.0);
             let xi = ((tx.round() as i32 % w as i32) + w as i32) % w as i32;
             let yi = ((ty.round() as i32 % h as i32) + h as i32) % h as i32;
@@ -104,30 +111,107 @@ pub fn scratches_pattern(w: u32, h: u32, seed: u32, params: ScratchParams) -> Gr
     let mut rng = StdRng::seed_from_u64(seed as u64);
     let wf = w as f32;
     let hf = h as f32;
-    let area = wf * hf;
-    let max_count = (area / 1500.0) as u32;
-    let count = ((max_count as f32) * params.density).max(10.0) as u32;
-    let min_side = wf.min(hf);
-    let avg_length = params.length * min_side;
-    for _ in 0..count {
-        let (sx, sy) = if rng.r#gen::<f32>() < params.clusters {
-            let cx = wf * 0.5 + rng.gen_range(-0.3..0.3_f32) * wf;
-            let cy = hf * 0.5 + rng.gen_range(-0.3..0.3_f32) * hf;
+
+    // ── Плотность: density 0.1..1.0 → количество царапин 5..80 ──
+        let density = params.density.clamp(0.1, 1.0);
+    let base_count = (20.0 + density * 180.0) as u32;
+
+    // ── Кластеры: если clusters > 0 — царапины группируются в N областей ──
+    let clusters = params.clusters.clamp(0.0, 1.0);
+    let cluster_count = if clusters > 0.05 {
+        (1.0 + clusters * 5.0) as u32
+    } else {
+        0
+    };
+
+    // Длины: length 0.02..0.4 → пиксели 0.02*wf .. 0.4*wf
+    let base_len = (params.length.clamp(0.02, 0.4) * wf).max(5.0);
+
+    // Толщина: thickness 0.5..6.0 → пиксели
+    let base_thick = params.thickness.clamp(0.5, 6.0);
+
+    // Волнистость 0..1
+    let waviness = params.waviness.clamp(0.0, 1.0);
+
+    // Ветвление 0..0.5
+    let branches = params.branches.clamp(0.0, 0.5);
+
+    // ── Кластерные центры ──
+    let cluster_centers: Vec<(f32, f32)> = (0..cluster_count)
+        .map(|_| {
+            let cx = rng.gen_range(0.0..wf);
+            let cy = rng.gen_range(0.0..hf);
             (cx, cy)
+        })
+        .collect();
+    let cluster_radius = wf.min(hf) * 0.25;
+
+    // ── Рисуем царапины ──
+    for _ in 0..base_count {
+        let (sx, sy) = if cluster_count > 0 && rng.gen::<f32>() < 0.7 {
+            // Внутри случайного кластера
+            let (cx, cy) = cluster_centers[rng.gen_range(0..cluster_centers.len())];
+            let a = rng.gen_range(0.0..std::f32::consts::TAU);
+            let r = rng.gen_range(0.0..cluster_radius);
+            (cx + a.cos() * r, cy + a.sin() * r)
         } else {
+            // Случайно по всей площади
             (rng.gen_range(0.0..wf), rng.gen_range(0.0..hf))
         };
-        let angle = rng.gen_range(0.0..(std::f32::consts::PI * 2.0));
-        let length = avg_length * rng.gen_range(0.4..1.6);
-        let th = params.thickness * rng.gen_range(0.5..1.5);
-        let broken = rng.r#gen::<f32>() < 0.6;
-        let end = draw_scratch_curve(&mut img, &mut rng, (sx, sy), angle, length, th, params.waviness, broken, 1.0);
-        if rng.r#gen::<f32>() < params.branches {
-            let ba = angle + rng.gen_range(-1.2..1.2_f32);
-            let bl = length * rng.gen_range(0.2..0.5);
-            draw_scratch_curve(&mut img, &mut rng, end, ba, bl, th * 0.7, params.waviness, false, 0.7);
+
+        // Угол: царапины преимущественно горизонтальные с шумом ±60°
+        let base_angle = rng.gen_range(-std::f32::consts::FRAC_PI_2..std::f32::consts::FRAC_PI_2);
+        let angle = base_angle + rng.gen_range(-0.5..0.5);
+
+        // Длина: length ± 70%
+        let len = base_len * rng.gen_range(0.3..1.3);
+
+        // Толщина: thickness ± 40%
+        let thick = base_thick * rng.gen_range(0.6..1.4);
+
+        // Яркость: 0.75..1.0 — царапины должны быть явными
+        let intensity = rng.gen_range(0.75..1.0);
+
+        // Broken: 30% царапин с разрывами
+        let broken = rng.gen::<f32>() < 0.3;
+
+        // Основная царапина
+        let (ex, ey) = draw_scratch_curve(
+            &mut img, &mut rng, (sx, sy), angle, len, thick, waviness, broken, intensity,
+        );
+
+        // Ветвление
+        if branches > 0.01 && rng.gen::<f32>() < branches * 2.0 {
+            let branch_angle = angle + rng.gen_range(-0.8..0.8);
+            let branch_len = len * rng.gen_range(0.3..0.7);
+            let branch_thick = thick * rng.gen_range(0.4..0.8);
+            let t_on_main = rng.gen_range(0.2..0.8);
+            let bx = sx + (ex - sx) * t_on_main;
+            let by = sy + (ey - sy) * t_on_main;
+            draw_scratch_curve(
+                &mut img, &mut rng, (bx, by), branch_angle, branch_len, branch_thick, waviness, false, intensity * 0.8,
+            );
         }
     }
+
+    // ═══ Position (posX, posY) — сдвиг финальной картинки ═══
+    let px = params.pos_x * wf;
+    let py = params.pos_y * hf;
+    if px.abs() > 0.5 || py.abs() > 0.5 {
+        let raw = img.as_raw();
+        let mut shifted: Vec<u8> = vec![0; (w * h) as usize];
+        for y in 0..h {
+            for x in 0..w {
+                let sx = ((x as f32 - px).rem_euclid(wf)) as u32;
+                let sy = ((y as f32 - py).rem_euclid(hf)) as u32;
+                let src = (sy * w + sx) as usize;
+                let dst = (y * w + x) as usize;
+                shifted[dst] = raw[src];
+            }
+        }
+        img.copy_from_slice(&shifted);
+    }
+
     img
 }
 
@@ -647,10 +731,9 @@ pub fn rust_pattern_from_masks(
 
 // ============ Модуляция ============
 
-pub fn modulate_by_placement(pattern: &GrayImage, placement: &GrayImage, bias: f32) -> GrayImage {
+pub fn modulate_by_placement(pattern: &GrayImage, placement: &GrayImage, _bias: f32) -> GrayImage {
     let (w, h) = pattern.dimensions();
     if w != placement.width() || h != placement.height() { return pattern.clone(); }
-    let b = bias.clamp(0.0, 1.0);
     let pat_raw = pattern.as_raw();
     let plc_raw = placement.as_raw();
     let out: Vec<u8> = (0..h as usize).into_par_iter().flat_map(|yi| {
@@ -660,7 +743,7 @@ pub fn modulate_by_placement(pattern: &GrayImage, placement: &GrayImage, bias: f
             let idx = (y * w + x) as usize;
             let p = pat_raw[idx] as f32 / 255.0;
             let pl = plc_raw[idx] as f32 / 255.0;
-            let factor = b + (1.0 - b) * pl;
+            let factor = 0.85 + 0.15 * pl;
             row.push(((p * factor).clamp(0.0, 1.0) * 255.0) as u8);
         }
         row

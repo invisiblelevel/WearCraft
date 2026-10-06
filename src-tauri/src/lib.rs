@@ -86,6 +86,7 @@ pub fn run() {
             commands::wear::list_masks_in_folder,
             commands::wear::get_user_masks_path,
             commands::wear::open_user_masks_folder,
+			commands::wear::get_geo_normal_path,
             open_manual,
         ])
         .run(tauri::generate_context!())

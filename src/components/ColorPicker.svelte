@@ -1,4 +1,4 @@
-<script>
+﻿<script>
   let {
     rgb = { r: 95, g: 85, b: 75 },
     onchange = () => {},
@@ -11,16 +11,28 @@
   let s = $state(0);
   let v = $state(0);
 
-  // Инициализация из rgb
+  // Отслеживаем последний отправленный rgb, чтобы не перезаписывать при вводе
+  let lastEmitted = $state({ r: rgb.r, g: rgb.g, b: rgb.b });
+
+  // Синхронизация из пропса rgb — только когда родитель прислал НОВОЕ значение
   $effect(() => {
-    const { h: nh, s: ns, v: nv } = rgbToHsv(rgb.r, rgb.g, rgb.b);
+    const incoming = { r: rgb.r, g: rgb.g, b: rgb.b };
+    if (
+      incoming.r === lastEmitted.r &&
+      incoming.g === lastEmitted.g &&
+      incoming.b === lastEmitted.b
+    ) {
+      return; // эхо от нашего же onchange — игнорируем
+    }
+    const { h: nh, s: ns, v: nv } = rgbToHsv(incoming.r, incoming.g, incoming.b);
     h = nh; s = ns; v = nv;
+    lastEmitted = incoming;
   });
 
-  // При изменении h/s/v — уведомляем родителя
   function emitChange() {
-    const { r, g, b } = hsvToRgb(h, s, v);
-    onchange({ r, g, b });
+    const c = hsvToRgb(h, s, v);
+    lastEmitted = c;
+    onchange(c);
   }
 
   // ═══ Палитра-квадрат ═══
@@ -76,17 +88,57 @@
 
   // ═══ HEX ═══
   let hexInput = $state('');
+  let hexFocused = $state(false);
+
+  // Обновляем hex-инпут, только если пользователь в него не печатает
   $effect(() => {
-    hexInput = rgbToHex(rgb.r, rgb.g, rgb.b);
+    const cur = hsvToRgb(h, s, v);
+    const hex = rgbToHex(cur.r, cur.g, cur.b);
+    if (!hexFocused) {
+      hexInput = hex;
+    }
   });
 
+  function normalizeHex(raw) {
+    let t = raw.trim().replace(/^#/, '');
+    if (t.length === 3) {
+      t = t.split('').map(c => c + c).join('');
+    }
+    if (!/^[0-9a-fA-F]{6}$/.test(t)) return null;
+    return {
+      r: parseInt(t.slice(0, 2), 16),
+      g: parseInt(t.slice(2, 4), 16),
+      b: parseInt(t.slice(4, 6), 16),
+    };
+  }
+
   function onHexInput(e) {
-    const val = e.currentTarget.value.replace('#', '');
-    if (/^[0-9a-fA-F]{6}$/.test(val)) {
-      const r = parseInt(val.slice(0, 2), 16);
-      const g = parseInt(val.slice(2, 4), 16);
-      const b = parseInt(val.slice(4, 6), 16);
-      onchange({ r, g, b });
+    const raw = e.currentTarget.value;
+    hexInput = raw;
+    const parsed = normalizeHex(raw);
+    if (parsed) {
+      const { h: nh, s: ns, v: nv } = rgbToHsv(parsed.r, parsed.g, parsed.b);
+      h = nh; s = ns; v = nv;
+      lastEmitted = parsed;
+      onchange(parsed);
+    }
+  }
+
+  function onHexBlur() {
+    hexFocused = false;
+    // Откат к актуальному цвету, если введено невалидное
+    if (!normalizeHex(hexInput)) {
+      const cur = hsvToRgb(h, s, v);
+      hexInput = rgbToHex(cur.r, cur.g, cur.b);
+    } else {
+      const parsed = normalizeHex(hexInput);
+      hexInput = rgbToHex(parsed.r, parsed.g, parsed.b);
+    }
+  }
+
+  function onHexKeydown(e) {
+    if (e.key === 'Enter') {
+      e.currentTarget.blur();
     }
   }
 
@@ -124,10 +176,9 @@
     };
   }
   function rgbToHex(r, g, b) {
-    return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase();
+    return '#' + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('').toUpperCase();
   }
 
-  // Актуальные rgb для превью
   let currentRgb = $derived(hsvToRgb(h, s, v));
 </script>
 
@@ -173,6 +224,11 @@
       maxlength="7"
       value={hexInput}
       oninput={onHexInput}
+      onfocus={() => (hexFocused = true)}
+      onblur={onHexBlur}
+      onkeydown={onHexKeydown}
+      spellcheck="false"
+      autocomplete="off"
     />
   </div>
 
@@ -183,8 +239,8 @@
 
   <!-- Кнопки -->
   <div class="buttons">
-    <button class="btn-cancel" onclick={oncancel}>Отмена</button>
-    <button class="btn-apply" onclick={onapply}>Применить</button>
+    <button type="button" class="btn-cancel" onclick={oncancel}>Отмена</button>
+    <button type="button" class="btn-apply" onclick={onapply}>Применить</button>
   </div>
 </div>
 

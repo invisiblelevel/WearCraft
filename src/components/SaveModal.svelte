@@ -1,4 +1,4 @@
-<script>
+﻿<script>
   import { X, Image, Archive, Box, Loader2, Gamepad2 } from '@lucide/svelte';
   import { t } from '../i18n.svelte.js';
   import { ui, pbr, viewer } from '../lib/stores.svelte.js';
@@ -28,7 +28,7 @@
   <div class="modal" role="dialog" aria-modal="true">
     <header class="modal-head">
       <h2>{t('save.title')}</h2>
-      <button class="close" onclick={close} disabled={ui.busy} aria-label="Close">
+      <button type="button" class="close" onclick={close} disabled={ui.busy} aria-label="Close">
         <X size={16} />
       </button>
     </header>
@@ -47,7 +47,7 @@
         </div>
       {:else}
         <!-- ═══ Оригинальные карты ═══ -->
-        <button class="save-card" disabled={!hasPbr || ui.busy} onclick={onSavePBR}>
+        <button type="button" class="save-card" disabled={!hasPbr || ui.busy} onclick={onSavePBR}>
           <div class="card-icon"><Image size={22} /></div>
           <div class="card-info">
             <div class="card-name">{t('save.pbr.name')}</div>
@@ -56,7 +56,7 @@
           <div class="card-action">{t('save.action')}</div>
         </button>
 
-        <button class="save-card" disabled={!hasPbr || ui.busy} onclick={onSaveZIP}>
+        <button type="button" class="save-card" disabled={!hasPbr || ui.busy} onclick={onSaveZIP}>
           <div class="card-icon"><Archive size={22} /></div>
           <div class="card-info">
             <div class="card-name">{t('save.zip.name')}</div>
@@ -65,7 +65,7 @@
           <div class="card-action">{t('save.action')}</div>
         </button>
 
-        <button class="save-card" disabled={!hasObject || ui.busy} onclick={onSaveOBJ}>
+        <button type="button" class="save-card" disabled={!hasObject || ui.busy} onclick={onSaveOBJ}>
           <div class="card-icon"><Box size={22} /></div>
           <div class="card-info">
             <div class="card-name">{t('save.obj.name')}</div>
@@ -81,7 +81,7 @@
             <span>{t('save.engines.title')}</span>
           </div>
 
-          <button class="save-card engine" disabled={!hasPbr || ui.busy} onclick={saveUnreal}>
+          <button type="button" class="save-card engine" disabled={!hasPbr || ui.busy} onclick={saveUnreal}>
             <div class="card-icon engine-icon"><Gamepad2 size={22} /></div>
             <div class="card-info">
               <div class="card-name">{t('save.unreal.name')}</div>
@@ -90,7 +90,7 @@
             <div class="card-action">{t('save.action')}</div>
           </button>
 
-          <button class="save-card engine" disabled={!hasPbr || ui.busy} onclick={saveUnity}>
+          <button type="button" class="save-card engine" disabled={!hasPbr || ui.busy} onclick={saveUnity}>
             <div class="card-icon engine-icon"><Gamepad2 size={22} /></div>
             <div class="card-info">
               <div class="card-name">{t('save.unity.name')}</div>

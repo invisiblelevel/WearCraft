@@ -159,6 +159,7 @@ export const streakParams = $state({
   procScale: 1.0,
   maskScale: 1.0,
   deform: 0.3,
+  maskThickness: -0.3,
   randomRotation: false,
   disableTiling: false,
 });
@@ -181,6 +182,7 @@ export function resetStreakParams() {
   streakParams.procScale = 1.0;
   streakParams.maskScale = 1.0;
   streakParams.deform = 0.3;
+  streakParams.maskThickness = -0.3;
   streakParams.randomRotation = false;
   streakParams.disableTiling = false;
 }
@@ -383,6 +385,19 @@ const DEFAULT_SETTINGS = {
   environment: 'neutral',
   environmentIntensity: 0.85,
   showHdrBackground: false,
+  groupOpen: {
+    mask: true,
+    decal: true,
+    preset: true,
+    presetSettings: true,
+    generation: true,
+    maps: false,
+    geometryLimit: true,
+  },
+  geometryLimitEnabled: false,
+  geometryLimitMode: 'sides',
+  geometryLimitSoftness: 0.5,
+  geometryLimitInvert: false,
 };
 
 function loadSettings() {
@@ -415,6 +430,13 @@ function loadSettings() {
       if (parsed.userMaskDirtPos) clean.userMaskDirtPos = normalizePos(parsed.userMaskDirtPos);
       if (parsed.userMaskStreakPos) clean.userMaskStreakPos = normalizePos(parsed.userMaskStreakPos);
       if (parsed.userMaskScratchPos) clean.userMaskScratchPos = normalizePos(parsed.userMaskScratchPos);
+      if (parsed.groupOpen && typeof parsed.groupOpen === 'object') {
+        clean.groupOpen = { ...clean.groupOpen, ...parsed.groupOpen };
+      }
+      if (typeof parsed.geometryLimitEnabled === 'boolean') clean.geometryLimitEnabled = parsed.geometryLimitEnabled;
+      if (typeof parsed.geometryLimitMode === 'string') clean.geometryLimitMode = parsed.geometryLimitMode;
+      if (typeof parsed.geometryLimitSoftness === 'number') clean.geometryLimitSoftness = parsed.geometryLimitSoftness;
+      if (typeof parsed.geometryLimitInvert === 'boolean') clean.geometryLimitInvert = parsed.geometryLimitInvert;
       return clean;
     }
   } catch (e) {}
@@ -446,6 +468,11 @@ export function saveSettings() {
       environment: settings.environment,
       environmentIntensity: settings.environmentIntensity,
       showHdrBackground: settings.showHdrBackground,
+      groupOpen: settings.groupOpen,
+      geometryLimitEnabled: settings.geometryLimitEnabled,
+      geometryLimitMode: settings.geometryLimitMode,
+      geometryLimitSoftness: settings.geometryLimitSoftness,
+      geometryLimitInvert: settings.geometryLimitInvert,
     }));
   } catch (e) {}
 }
@@ -470,6 +497,19 @@ export function resetSettings() {
   settings.environment = 'neutral';
   settings.environmentIntensity = 0.85;
   settings.showHdrBackground = false;
+  settings.groupOpen = {
+    mask: true,
+    decal: true,
+    preset: true,
+    presetSettings: true,
+    generation: true,
+    maps: false,
+    geometryLimit: true,
+  };
+  settings.geometryLimitEnabled = false;
+  settings.geometryLimitMode = 'sides';
+  settings.geometryLimitSoftness = 0.5;
+  settings.geometryLimitInvert = false;
   saveSettings();
 }
 
@@ -510,12 +550,26 @@ export const ui = $state({
   environment: 'neutral',
   environmentIntensity: 0.85,
   showHdrBackground: false,
+
+  geoNormalPath: '',
+  geoNormalReady: false,
+  geoNormalTick: 0,
+  geoNormalTexture: null,
+
+  geometryLimitEnabled: false,
+  geometryLimitMode: 'sides',
+  geometryLimitSoftness: 0.5,
+  geometryLimitInvert: false,
 });
 
 ui.zoom = settings.uiZoom || 1.0;
 ui.environment = settings.environment || 'neutral';
 ui.environmentIntensity = settings.environmentIntensity ?? 0.85;
 ui.showHdrBackground = settings.showHdrBackground ?? false;
+ui.geometryLimitEnabled = settings.geometryLimitEnabled ?? false;
+ui.geometryLimitMode = settings.geometryLimitMode ?? 'sides';
+ui.geometryLimitSoftness = settings.geometryLimitSoftness ?? 0.5;
+ui.geometryLimitInvert = settings.geometryLimitInvert ?? false;
 
 export function setEnvironment(id) {
   ui.environment = id;
@@ -679,6 +733,14 @@ export function markMasksInfoShown() {
     settings.masksInfoShown = true;
     saveSettings();
   }
+}
+
+// ═══ Geo-limit: поддерживается только для сферы и загруженной модели ═══
+// Куб, цилиндр, торус — overlapping/неподходящая UV, geo-limit бесполезен.
+export function isGeoLimitSupported() {
+  if (viewer.loadedModel) return true;
+  const shape = viewer.shape;
+  return shape !== 'cube' && shape !== 'cylinder' && shape !== 'torus';
 }
 
 // Decal — рандом позиции и поворота

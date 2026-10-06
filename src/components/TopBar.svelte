@@ -1,4 +1,4 @@
-<script>
+﻿<script>
   import { Info } from '@lucide/svelte';
   import { setLocale, t, i18n } from '../i18n.svelte.js';
   import { ui } from '../lib/stores.svelte.js';
@@ -11,13 +11,13 @@
     <span class="ver">{t('app.version')}</span>
   </div>
   <div class="topbar-actions">
-    <button class="icon-btn" title={t('menu.about')} onclick={() => ui.infoOpen = true}>
+    <button type="button" class="icon-btn" title={t('menu.about')} onclick={() => ui.infoOpen = true}>
       <Info size={16} />
     </button>
     <div class="lang-switch">
-      <button class:active={i18n.locale === 'ru'} onclick={() => setLocale('ru')}>RU</button>
-      <button class:active={i18n.locale === 'en'} onclick={() => setLocale('en')}>EN</button>
-      <button class:active={i18n.locale === 'zh'} onclick={() => setLocale('zh')}>中文</button>
+      <button type="button" class:active={i18n.locale === 'ru'} onclick={() => setLocale('ru')}>RU</button>
+      <button type="button" class:active={i18n.locale === 'en'} onclick={() => setLocale('en')}>EN</button>
+      <button type="button" class:active={i18n.locale === 'zh'} onclick={() => setLocale('zh')}>中文</button>
     </div>
   </div>
 </header>

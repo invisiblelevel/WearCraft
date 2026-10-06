@@ -298,7 +298,7 @@ pub fn apply_mask_to_normal(original: &RgbImage, mask: &GrayImage, depth: f32) -
             let idx_m = (y * w + x) as usize;
             let m = mask_raw[idx_m] as f32 / 255.0;
             let idx = idx_m * 3;
-            if m < 0.01 {
+            if m < 0.05 {
                 row.push(orig_raw[idx]);
                 row.push(orig_raw[idx + 1]);
                 row.push(orig_raw[idx + 2]);
@@ -312,8 +312,8 @@ pub fn apply_mask_to_normal(original: &RgbImage, mask: &GrayImage, depth: f32) -
             let mr = mask_raw[(y * w + xr) as usize] as f32 / 255.0;
             let mu = mask_raw[(yu * w + x) as usize] as f32 / 255.0;
             let md = mask_raw[(yd * w + x) as usize] as f32 / 255.0;
-            let gx = (mr - ml) * depth * 2.0;
-            let gy = (md - mu) * depth * 2.0;
+            let gx = (mr - ml) * depth * 30.0;
+            let gy = (md - mu) * depth * 30.0;
             let nx = (orig_raw[idx] as f32 / 255.0 - 0.5) * 2.0;
             let ny = (orig_raw[idx + 1] as f32 / 255.0 - 0.5) * 2.0;
             let nz = (orig_raw[idx + 2] as f32 / 255.0) * 2.0 - 1.0;
@@ -480,7 +480,7 @@ pub fn decrease_metalness_by_mask(m: &GrayImage, mask: &GrayImage, amount: f32) 
 pub fn add_rim_highlight(albedo: &RgbImage, mask: &GrayImage, amount: f32, dark: bool) -> RgbImage {
     let (w, h) = albedo.dimensions();
     if w != mask.width() || h != mask.height() || amount <= 0.0 { return albedo.clone(); }
-    let blurred = gaussian_blur(mask, 2);
+    let blurred = gaussian_blur(mask, 3);
     let a_raw = albedo.as_raw();
     let m_raw = mask.as_raw();
     let b_raw = blurred.as_raw();
@@ -492,7 +492,7 @@ pub fn add_rim_highlight(albedo: &RgbImage, mask: &GrayImage, amount: f32, dark:
             let m = m_raw[idx_m] as f32 / 255.0;
             let b = b_raw[idx_m] as f32 / 255.0;
             let rim = (b - m).max(0.0);
-            let factor = if dark { 1.0 - rim * amount * 0.5 } else { 1.0 + rim * amount * 0.8 };
+            let factor = if dark { 1.0 - rim * amount * 0.5 } else { 1.0 + rim * amount * 1.5 };
             let idx = idx_m * 3;
             row.push((a_raw[idx] as f32 * factor).clamp(0.0, 255.0) as u8);
             row.push((a_raw[idx + 1] as f32 * factor).clamp(0.0, 255.0) as u8);
@@ -922,8 +922,6 @@ fn sample_gray_bilinear(img: &GrayImage, u: f32, v: f32) -> f32 {
     top * (1.0 - fy) + bot * fy
 }
 
-/// Наложение Decal на PBR-сет.
-/// Формула 1-в-1 с decal-shader.js (GLSL).
 pub fn apply_decal_to_set(
     set: &LoadedPbr,
     decal: &image::RgbaImage,
@@ -986,7 +984,6 @@ pub fn apply_decal_to_set(
         }
     }).collect();
 
-    // ═══ ALBEDO ═══
     let new_albedo = set.albedo.as_ref().map(|albedo| {
         let a_raw = albedo.as_raw();
         let flat: Vec<u8> = (0..h as usize).into_par_iter().flat_map(|yi| {
@@ -1027,7 +1024,6 @@ pub fn apply_decal_to_set(
         img
     });
 
-    // ═══ ROUGHNESS ═══
     let new_roughness = set.roughness.as_ref().map(|rough| {
         let r_raw = rough.as_raw();
         let flat: Vec<u8> = (0..h as usize).into_par_iter().flat_map(|yi| {
@@ -1057,7 +1053,6 @@ pub fn apply_decal_to_set(
         img
     });
 
-    // ═══ HEIGHT (для normal) ═══
     let new_normal = if amount_normal > 0.001 && height_intensity.abs() > 0.001 {
         set.normal.as_ref().map(|normal| {
             let n_raw = normal.as_raw();
@@ -1130,6 +1125,195 @@ fn sample_height_at(
     } else {
         let d = sample_rgba_bilinear(decal, u, v);
         (d[0] + d[1] + d[2]) / 3.0 / 255.0
+    }
+}
+
+// ═══════════════════════════════════════════════════════════
+// GEOMETRY LIMIT — интерполяция между оригиналом и эффектом
+// ═══════════════════════════════════════════════════════════
+
+/// Интерполирует между оригиналом PBR и результатом пресета по geo-normal маске.
+///
+/// factor = 0 → берём оригинал (эффект убран)
+/// factor = 1 → берём результат (эффект есть)
+pub fn blend_by_geometry_mask(
+    original: &LoadedPbr,
+    warped: &LoadedPbr,
+    geo_normal: &RgbImage,
+    mode: &str,
+    softness: f32,
+    invert: bool,
+) -> LoadedPbr {
+    let (w, h) = (original.width(), original.height());
+    if w == 0 || h == 0 { return warped.clone(); }
+
+    let gn_owned;
+    let gn_ref = if geo_normal.width() != w || geo_normal.height() != h {
+        gn_owned = image::imageops::resize(geo_normal, w, h, image::imageops::FilterType::Lanczos3);
+        &gn_owned
+    } else {
+        geo_normal
+    };
+    let gn_raw = gn_ref.as_raw();
+
+    let soft = softness.clamp(0.0, 1.0);
+    let lo = 0.5 - soft * 0.5;
+    let hi = 0.5 + soft * 0.5;
+
+    let factor_map: Vec<f32> = (0..(w * h) as usize).into_par_iter().map(|i| {
+        let r = gn_raw[i * 3] as f32 / 255.0 * 2.0 - 1.0;
+        let g = gn_raw[i * 3 + 1] as f32 / 255.0 * 2.0 - 1.0;
+        let b = gn_raw[i * 3 + 2] as f32 / 255.0 * 2.0 - 1.0;
+
+        let len = (r * r + g * g + b * b).sqrt().max(1e-6);
+        let ny = g / len;
+
+        let base = match mode {
+            "top"        => ny.max(0.0),
+            "bottom"     => (-ny).max(0.0),
+            "top_bottom" => ny.abs(),
+            _            => 1.0 - ny.abs(),
+        };
+
+        let t = if soft < 0.01 {
+            if base > 0.5 { 1.0 } else { 0.0 }
+        } else {
+            ((base - lo) / (hi - lo).max(1e-6)).clamp(0.0, 1.0)
+        };
+        let smooth = t * t * (3.0 - 2.0 * t);
+        if invert { 1.0 - smooth } else { smooth }
+    }).collect();
+
+    let new_albedo = match (original.albedo.as_ref(), warped.albedo.as_ref()) {
+        (Some(orig), Some(warp)) => {
+            let o_raw = orig.as_raw();
+            let w_raw = warp.as_raw();
+            let flat: Vec<u8> = (0..(w * h) as usize).into_par_iter().flat_map_iter(|i| {
+                let f = factor_map[i];
+                let o0 = o_raw[i * 3] as f32;
+                let o1 = o_raw[i * 3 + 1] as f32;
+                let o2 = o_raw[i * 3 + 2] as f32;
+                let w0 = w_raw[i * 3] as f32;
+                let w1 = w_raw[i * 3 + 1] as f32;
+                let w2 = w_raw[i * 3 + 2] as f32;
+                [
+                    (o0 * (1.0 - f) + w0 * f).clamp(0.0, 255.0) as u8,
+                    (o1 * (1.0 - f) + w1 * f).clamp(0.0, 255.0) as u8,
+                    (o2 * (1.0 - f) + w2 * f).clamp(0.0, 255.0) as u8,
+                ].into_iter()
+            }).collect();
+            let mut img = RgbImage::new(w, h);
+            img.copy_from_slice(&flat);
+            Some(img)
+        }
+        (o, w) => w.or(o).cloned(),
+    };
+
+    let new_roughness = match (original.roughness.as_ref(), warped.roughness.as_ref()) {
+        (Some(orig), Some(warp)) => {
+            let o_raw = orig.as_raw();
+            let w_raw = warp.as_raw();
+            let flat: Vec<u8> = (0..(w * h) as usize).into_par_iter().map(|i| {
+                let f = factor_map[i];
+                let o = o_raw[i] as f32;
+                let wr = w_raw[i] as f32;
+                (o * (1.0 - f) + wr * f).clamp(0.0, 255.0) as u8
+            }).collect();
+            let mut img = GrayImage::new(w, h);
+            img.copy_from_slice(&flat);
+            Some(img)
+        }
+        (o, w) => w.or(o).cloned(),
+    };
+
+    let new_ao = match (original.ao.as_ref(), warped.ao.as_ref()) {
+        (Some(orig), Some(warp)) => {
+            let o_raw = orig.as_raw();
+            let w_raw = warp.as_raw();
+            let flat: Vec<u8> = (0..(w * h) as usize).into_par_iter().map(|i| {
+                let f = factor_map[i];
+                let o = o_raw[i] as f32;
+                let wr = w_raw[i] as f32;
+                (o * (1.0 - f) + wr * f).clamp(0.0, 255.0) as u8
+            }).collect();
+            let mut img = GrayImage::new(w, h);
+            img.copy_from_slice(&flat);
+            Some(img)
+        }
+        (o, w) => w.or(o).cloned(),
+    };
+
+    let new_metalness = match (original.metalness.as_ref(), warped.metalness.as_ref()) {
+        (Some(orig), Some(warp)) => {
+            let o_raw = orig.as_raw();
+            let w_raw = warp.as_raw();
+            let flat: Vec<u8> = (0..(w * h) as usize).into_par_iter().map(|i| {
+                let f = factor_map[i];
+                let o = o_raw[i] as f32;
+                let wr = w_raw[i] as f32;
+                (o * (1.0 - f) + wr * f).clamp(0.0, 255.0) as u8
+            }).collect();
+            let mut img = GrayImage::new(w, h);
+            img.copy_from_slice(&flat);
+            Some(img)
+        }
+        (o, w) => w.or(o).cloned(),
+    };
+
+    let new_height = match (original.height.as_ref(), warped.height.as_ref()) {
+        (Some(orig), Some(warp)) => {
+            let o_raw = orig.as_raw();
+            let w_raw = warp.as_raw();
+            let flat: Vec<u8> = (0..(w * h) as usize).into_par_iter().map(|i| {
+                let f = factor_map[i];
+                let o = o_raw[i] as f32;
+                let wr = w_raw[i] as f32;
+                (o * (1.0 - f) + wr * f).clamp(0.0, 255.0) as u8
+            }).collect();
+            let mut img = GrayImage::new(w, h);
+            img.copy_from_slice(&flat);
+            Some(img)
+        }
+        (o, w) => w.or(o).cloned(),
+    };
+
+    let new_normal = match (original.normal.as_ref(), warped.normal.as_ref()) {
+        (Some(orig), Some(warp)) => {
+            let o_raw = orig.as_raw();
+            let w_raw = warp.as_raw();
+            let flat: Vec<u8> = (0..(w * h) as usize).into_par_iter().flat_map_iter(|i| {
+                let f = factor_map[i];
+                let onx = o_raw[i * 3] as f32 / 255.0 * 2.0 - 1.0;
+                let ony = o_raw[i * 3 + 1] as f32 / 255.0 * 2.0 - 1.0;
+                let onz = o_raw[i * 3 + 2] as f32 / 255.0 * 2.0 - 1.0;
+                let wnx = w_raw[i * 3] as f32 / 255.0 * 2.0 - 1.0;
+                let wny = w_raw[i * 3 + 1] as f32 / 255.0 * 2.0 - 1.0;
+                let wnz = w_raw[i * 3 + 2] as f32 / 255.0 * 2.0 - 1.0;
+                let nx = onx * (1.0 - f) + wnx * f;
+                let ny = ony * (1.0 - f) + wny * f;
+                let nz = onz * (1.0 - f) + wnz * f;
+                let len = (nx * nx + ny * ny + nz * nz).sqrt().max(1e-6);
+                [
+                    (((nx / len) * 0.5 + 0.5) * 255.0).clamp(0.0, 255.0) as u8,
+                    (((ny / len) * 0.5 + 0.5) * 255.0).clamp(0.0, 255.0) as u8,
+                    (((nz / len) * 0.5 + 0.5) * 255.0).clamp(0.0, 255.0) as u8,
+                ].into_iter()
+            }).collect();
+            let mut img = RgbImage::new(w, h);
+            img.copy_from_slice(&flat);
+            Some(img)
+        }
+        (o, w) => w.or(o).cloned(),
+    };
+
+    LoadedPbr {
+        albedo: new_albedo.or_else(|| warped.albedo.clone()),
+        normal: new_normal.or_else(|| warped.normal.clone()),
+        roughness: new_roughness.or_else(|| warped.roughness.clone()),
+        ao: new_ao.or_else(|| warped.ao.clone()),
+        height: new_height.or_else(|| warped.height.clone()),
+        metalness: new_metalness.or_else(|| warped.metalness.clone()),
+        edge: warped.edge.clone(),
     }
 }
 

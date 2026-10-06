@@ -1,6 +1,6 @@
 {
   "app.title": "WearCraft",
-  "app.version": "v1.1.0",
+  "app.version": "v1.1.1",
 
   "rail.load": "Load 3D",
   "rail.loadpbr": "Load PBR",
@@ -16,7 +16,7 @@
   "preset.streaks": "Streaks",
 
   "preset.custom": "Custom",
-  "preset.custom_warn": "No preset selected. Load a mask or pick scratches/spots/rust.",
+  "preset.custom_warn": "No preset selected. Load a mask or pick scratches/streaks/spots/rust.",
 
   "mask.title": "MASK",
   "mask.load": "Load PNG",
@@ -72,11 +72,13 @@
   "streak.count": "Density",
   "streak.size": "Drop size",
   "streak.stretch": "Stretch",
+  "streak.stretch_y": "Stretch Y",
   "streak.threshold": "Threshold",
   "streak.sharpness": "Sharpness",
   "streak.color": "Color",
   "streak.thickness": "Thickness",
   "streak.waviness": "Waviness",
+  "streak.length": "Length",
 
   "rust.title": "RUST SETTINGS",
   "rust.count": "Count",
@@ -90,9 +92,21 @@
   "rust.masks_add": "Add masks",
   "rust.masks_clear": "Clear list",
   "rust.masks_builtin_hint": "Only built-in masks will be used. Add your own to extend.",
+  "rust.masks_click_select": "Click: use only this mask",
   "rust.masks_click_unselect": "Click: back to pool (all masks)",
   "rust.masks_mode_single": "Using only",
   "rust.masks_mode_pool": "Using all masks (pool)",
+
+  "geometry_limit.title": "GEOMETRY LIMIT",
+  "geometry_limit.enable": "Enable geometry limit",
+  "geometry_limit.no_uv": "Model has no UV — limit unavailable.",
+  "geometry_limit.mode": "Direction",
+  "geometry_limit.mode_sides": "Sides only",
+  "geometry_limit.mode_top": "Top only",
+  "geometry_limit.mode_bottom": "Bottom only",
+  "geometry_limit.mode_top_bottom": "Top and bottom",
+  "geometry_limit.softness": "Transition softness",
+  "geometry_limit.invert": "Invert",
 
   "params.title": "GENERATE VARIATIONS",
   "params.variations.label": "Variations",
@@ -117,6 +131,7 @@
   "preview.hint": "LMB — rotate, wheel — zoom",
   "preview.prev": "Previous variation",
   "preview.next": "Next variation",
+  "preview.source": "Source",
 
   "log.title": "Log",
   "log.empty": "Empty for now",
@@ -150,6 +165,7 @@
   "info.tab.about": "About",
   "info.tab.version": "Version",
   "info.tab.support": "Support",
+  "info.tab.manual": "Manual",
 
   "info.about.title": "What is WearCraft",
   "info.about.body": "WearCraft takes a PBR texture set and generates unique wear variations — so identical assets stop looking copy-pasted.",
@@ -166,6 +182,10 @@
 
   "info.support.title": "Support the project",
   "info.support.body": "If WearCraft saves you time, toss a few coins the old guy's way for a smoke.",
+
+  "info.manual.title": "User Manual",
+  "info.manual.body": "A detailed guide to all WearCraft features. Opens in your browser.",
+  "info.manual.open": "Open manual",
 
   "settings.tab.performance": "Performance",
   "settings.tab.environment": "Environment",
@@ -209,7 +229,7 @@
 
   "drop.conflict_title": "Choose file",
   "drop.conflict_hint": "Multiple maps of same type found. Choose which to use.",
-  
+
   "save.engines.title": "Engines",
   "save.unreal.name": "Save for Unreal",
   "save.unreal.desc": "ORM pack + normal Y-flip",
@@ -217,7 +237,7 @@
   "save.unity.desc": "Metallic/Smoothness + normal Y-flip",
   "save.unity.builtin": "Built-in",
   "save.unity.urp": "URP",
-  
+
   "mask.add_user": "Custom mask",
   "mask.library": "Mask library",
   "mask.user_only_hint": "Only this mask is used. To mix with folder masks — clear it and open the library.",
@@ -243,19 +263,12 @@
   "masks_info.about_user_mask_title": "One custom mask",
   "masks_info.about_user_mask": "\"Custom mask\" button takes ONE mask and uses ONLY it. To mix — turn it off and use the Library.",
   "masks_info.got_it": "Got it",
-  
   "masks_info.support_btn": "Support the project",
-  "preview.source": "Source",
-  
+
   "spots.pos_x": "Position X",
   "spots.pos_y": "Position Y",
   "spots.rotation": "Rotation",
   "spots.random_rotation": "Random rotation",
-  
-  "info.tab.manual": "Manual",
-  "info.manual.title": "User Manual",
-  "info.manual.body": "A detailed guide to all WearCraft features. Opens in your browser.",
-  "info.manual.open": "Open manual",
 
   "decal.title": "DECAL",
   "decal.section_image": "Image",
@@ -282,8 +295,7 @@
   "decal.random_position": "Random position",
   "decal.random_rotation": "Random rotation",
   "decal.tile_edge": "Tile edges",
-  
+
   "rail.generate_need_mask": "Load a mask",
-  "rail.generate_need_decal": "Load an image",
-  "streak.length": "Length"
+  "rail.generate_need_decal": "Load an image"
 }

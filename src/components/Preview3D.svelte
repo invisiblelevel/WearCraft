@@ -1,4 +1,4 @@
-<script>
+﻿<script>
   import { onMount, onDestroy } from 'svelte';
   import * as THREE from 'three';
   import {
@@ -11,6 +11,7 @@
     scratchParams, dirtParams, rustParams, streakParams,
     decalParams,
     settings,
+    isGeoLimitSupported,
     pushLog, pushToast
   } from '../lib/stores.svelte.js';
   import { applyPBR } from '../lib/pbr-loader.js';
@@ -33,6 +34,7 @@
   import { generateInstances, generateFixedInstance } from '../lib/instances.js';
   import { resolveMaskPaths, maskPathsKey } from '../lib/mask-source.js';
   import { applyEnvironment, preloadRest } from '../lib/environments.js';
+  import { bakeGeoNormal, saveGeoNormalToFile } from '../lib/geo-normal-bake.js';
 
   function seedAngle(varSeed) {
     let s = varSeed >>> 0;
@@ -50,7 +52,6 @@
   let showTiling = $state(false);
   let hasPbr = $derived(Object.keys(pbr.textures).length > 0);
 
-  // Логика «есть что генерировать»
   let canGenerate = $derived(
     hasPbr && (
       (params.preset === 'custom' && maskParams.enabled) ||
@@ -118,9 +119,7 @@
     canvasEl.appendChild(renderer.domElement);
 
     scene = new THREE.Scene();
-
-    // ═══ Окружение (HDR) ═══
-    // Не блокируем — грузим асинхронно. Пока грузится — серый фон.
+    window.__wearcraftScene = scene;
     scene.background = new THREE.Color(0x1a1a1a);
 
     camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 100);
@@ -174,10 +173,10 @@
     ro.observe(canvasEl);
     canvasEl._ro = ro;
 
-    // Первый рендер — до него HDR не грузим
     animate();
 
-    // ═══ Загружаем окружение асинхронно ═══
+    queueMicrotask(() => bakeGeoNormalForCurrentModel());
+
     try {
       await applyEnvironment(
         renderer, scene,
@@ -186,7 +185,6 @@
         ui.showHdrBackground ?? false
       );
       pushLog(`[Env] Окружение: ${ui.environment}`);
-      // Прогреваем остальные HDR в фоне
       preloadRest(renderer, ui.environment || 'neutral');
     } catch (e) {
       console.error('[Env] Ошибка загрузки HDR:', e);
@@ -196,7 +194,7 @@
 
   function createGeometry(kind) {
     switch (kind) {
-      case 'cube':     return new THREE.BoxGeometry(1.4, 1.4, 1.4, 32, 32, 32);
+      case 'cube':     return new THREE.BoxGeometry(1.4, 1.4, 1.4);
       case 'cylinder': return new THREE.CylinderGeometry(0.7, 0.7, 1.8, 64, 32);
       case 'torus':    return new THREE.TorusGeometry(0.9, 0.35, 48, 96);
       case 'sphere':
@@ -211,6 +209,7 @@
     const oldGeo = mesh.geometry;
     mesh.geometry = createGeometry(kind);
     oldGeo.dispose();
+    queueMicrotask(() => bakeGeoNormalForCurrentModel());
   }
 
   function resetModel() {
@@ -229,6 +228,7 @@
     if (Object.keys(pbr.textures).length > 0) applyPBR();
     pushLog('Модель сброшена');
     pushToast('Модель сброшена', 'info');
+    queueMicrotask(() => bakeGeoNormalForCurrentModel());
   }
 
   function disposeModel(obj) {
@@ -241,6 +241,74 @@
         }
       }
     });
+  }
+
+  // ═══ GEO-NORMAL BAKE ═══
+  let geoNormalBusy = false;
+  let lastBakedKey = '';
+
+  async function bakeGeoNormalForCurrentModel() {
+    if (geoNormalBusy) return;
+
+    // Куб, цилиндр, торус — geo-limit не поддерживается
+    if (!viewer.loadedModel && !isGeoLimitSupported()) {
+      ui.geoNormalReady = false;
+      ui.geoNormalPath = '';
+      pushLog(`[GeoNormal] ${viewer.shape} — ограничение по геометрии недоступно`);
+      return;
+    }
+
+    const target = viewer.loadedModel || mesh;
+    if (!target) {
+      ui.geoNormalReady = false;
+      return;
+    }
+
+    let triCount = 0;
+    target.traverse((c) => {
+      if (c.isMesh && c.geometry?.index) triCount += c.geometry.index.count / 3;
+      else if (c.isMesh && c.geometry?.attributes?.position) triCount += c.geometry.attributes.position.count / 3;
+    });
+    const key = `${viewer.loadedModel ? 'model' : viewer.shape}_${triCount}`;
+
+    if (key === lastBakedKey && ui.geoNormalReady) return;
+
+    geoNormalBusy = true;
+    try {
+      let hasUV = false;
+      target.traverse((c) => {
+        if (c.isMesh && c.geometry?.attributes?.uv) hasUV = true;
+      });
+
+      if (!hasUV) {
+        pushLog('[GeoNormal] Модель без UV — ограничение по геометрии недоступно');
+        pushToast('У модели нет UV — ограничение по геометрии недоступно', 'warn');
+        ui.geoNormalReady = false;
+        ui.geoNormalPath = '';
+        return;
+      }
+
+      pushLog('[GeoNormal] Запекание...');
+      const res = bakeGeoNormal(target, 1024, 1024);
+      if (!res) {
+        pushLog('[GeoNormal] Не удалось запечь');
+        ui.geoNormalReady = false;
+        return;
+      }
+
+      const path = await saveGeoNormalToFile(res.canvas, 'geo_normal.png');
+      ui.geoNormalPath = path;
+      ui.geoNormalReady = true;
+      ui.geoNormalTick = (ui.geoNormalTick || 0) + 1;
+      lastBakedKey = key;
+      pushLog(`[GeoNormal] Готово: ${path}`);
+    } catch (e) {
+      console.error('[GeoNormal] Ошибка:', e);
+      pushLog(`[GeoNormal] Ошибка: ${e}`);
+      ui.geoNormalReady = false;
+    } finally {
+      geoNormalBusy = false;
+    }
   }
 
   function updateCamera() {
@@ -370,7 +438,6 @@
     });
   });
 
-  // ═══ Окружение — реакция на смену ═══
   $effect(() => {
     const id = ui.environment;
     const intensity = ui.environmentIntensity;
@@ -566,6 +633,15 @@
         roughTex:   pbr.textures.roughness || null,
       });
     }
+
+    // ═══ GEO LIMIT ═══
+    const geoOk = isGeoLimitSupported();
+    const modeNum = { sides: 0, top: 1, bottom: 2, top_bottom: 3 }[ui.geometryLimitMode] ?? 0;
+
+    shaderMaterial.uniforms.uGeoLimitEnabled.value = geoOk && ui.geometryLimitEnabled;
+    shaderMaterial.uniforms.uGeoLimitMode.value = modeNum;
+    shaderMaterial.uniforms.uGeoLimitSoftness.value = ui.geometryLimitSoftness;
+    shaderMaterial.uniforms.uGeoLimitInvert.value = ui.geometryLimitInvert;
   }
 
   // ═══ Decal material ═══
@@ -763,9 +839,29 @@
     queueMicrotask(() => applyShaderMaterial());
   });
 
+  $effect(() => {
+    ui.geometryLimitEnabled;
+    ui.geometryLimitMode;
+    ui.geometryLimitSoftness;
+    ui.geometryLimitInvert;
+    ui.geoNormalReady;
+    ui.geoNormalPath;
+    viewer.shape;
+    viewer.loadedModel;
+
+    if (!renderer) return;
+    if (ui.currentVariation !== 0) return;
+
+    const preset = params.preset;
+    if (preset !== 'rust' && preset !== 'dirt' && preset !== 'streaks' && preset !== 'scratches') return;
+    if (!shaderMaterial) return;
+
+    queueMicrotask(() => applyShaderMaterial());
+  });
+
 </script>
 
-<section class="preview">
+<section class="preview" oncontextmenu={(e) => e.preventDefault()}>
   <div
     class="canvas-wrap"
     role="application"
@@ -796,16 +892,16 @@
   <div class="preview-overlay">
     <div class="top-left-controls">
       <div class="shape-switch" class:disabled={!!viewer.loadedModel}>
-        <button class:active={viewer.shape === 'sphere'}   disabled={!!viewer.loadedModel} onclick={() => setShape('sphere')}   title="Sphere"><Circle size={16} /></button>
-        <button class:active={viewer.shape === 'cube'}     disabled={!!viewer.loadedModel} onclick={() => setShape('cube')}     title="Cube"><Square size={16} /></button>
-        <button class:active={viewer.shape === 'cylinder'} disabled={!!viewer.loadedModel} onclick={() => setShape('cylinder')} title="Cylinder"><Cylinder size={16} /></button>
-        <button class:active={viewer.shape === 'torus'}    disabled={!!viewer.loadedModel} onclick={() => setShape('torus')}    title="Torus"><Torus size={16} /></button>
+        <button type="button" class:active={viewer.shape === 'sphere'}   disabled={!!viewer.loadedModel} onclick={() => setShape('sphere')}   title="Sphere"><Circle size={16} /></button>
+        <button type="button" class:active={viewer.shape === 'cube'}     disabled={!!viewer.loadedModel} onclick={() => setShape('cube')}     title="Cube"><Square size={16} /></button>
+        <button type="button" class:active={viewer.shape === 'cylinder'} disabled={!!viewer.loadedModel} onclick={() => setShape('cylinder')} title="Cylinder"><Cylinder size={16} /></button>
+        <button type="button" class:active={viewer.shape === 'torus'}    disabled={!!viewer.loadedModel} onclick={() => setShape('torus')}    title="Torus"><Torus size={16} /></button>
         {#if viewer.loadedModel}
-          <button class="reset-btn" onclick={resetModel} title="Сбросить модель"><X size={16} /></button>
+          <button type="button" class="reset-btn" onclick={resetModel} title="Сбросить модель"><X size={16} /></button>
         {/if}
       </div>
 
-      <button
+      <button type="button"
         class="tiling-toggle"
         class:active={showTiling}
         onclick={() => showTiling = !showTiling}
@@ -815,7 +911,7 @@
       </button>
     </div>
 
-    <button
+    <button type="button"
       class="generate-btn"
       disabled={ui.busy || !canGenerate}
       onclick={onGenerateWear}
@@ -842,14 +938,14 @@
           <input type="range" min="-180" max="180" step="1" bind:value={pbr.rotation} />
           <span class="tiling-value">{pbr.rotation.toFixed(0)}°</span>
         </div>
-        <button class="tiling-reset" onclick={resetTiling}>
+        <button type="button" class="tiling-reset" onclick={resetTiling}>
           <RotateCcw size={12} /> Reset
         </button>
       </div>
     {/if}
 
     <div class="var-nav">
-      <button onclick={prevVariation} title={t('preview.prev')}>
+      <button type="button" onclick={prevVariation} title={t('preview.prev')}>
         <ChevronLeft size={16} />
       </button>
       <span class="var-count">
@@ -859,7 +955,7 @@
           {ui.currentVariation} / {ui.generated.length || params.variations}
         {/if}
       </span>
-      <button onclick={nextVariation} title={t('preview.next')}>
+      <button type="button" onclick={nextVariation} title={t('preview.next')}>
         <ChevronRight size={16} />
       </button>
     </div>

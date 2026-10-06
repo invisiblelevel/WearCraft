@@ -1,4 +1,4 @@
-<script>
+﻿<script>
   import { X, FolderOpen, RotateCcw, CheckSquare, Square, Info, FileQuestion } from '@lucide/svelte';
   import { invoke } from '@tauri-apps/api/core';
   import { t } from '../i18n.svelte.js';
@@ -80,10 +80,10 @@
     <header class="modal-head">
       <h2>{t('masks_lib.title')} — {preset === 'rust' ? t('preset.rust') : t('preset.dirt')}</h2>
       <div class="head-actions">
-        <button class="icon-btn" onclick={openInfo} title={t('masks_info.title')}>
+        <button type="button" class="icon-btn" onclick={openInfo} title={t('masks_info.title')}>
           <Info size={14} />
         </button>
-        <button class="close" onclick={close} aria-label="Close">
+        <button type="button" class="close" onclick={close} aria-label="Close">
           <X size={16} />
         </button>
       </div>
@@ -99,25 +99,25 @@
           <FileQuestion size={32} />
           <div class="empty-text">{t('masks_lib.empty')}</div>
           <div class="empty-hint">{t('masks_lib.empty_hint')}</div>
-          <button class="btn-secondary" onclick={openFolder}>
+          <button type="button" class="btn-secondary" onclick={openFolder}>
             <FolderOpen size={14} />
             {t('masks_lib.open_folder')}
           </button>
         </div>
       {:else}
         <div class="toolbar">
-          <button class="btn-secondary" onclick={selectAll}>
+          <button type="button" class="btn-secondary" onclick={selectAll}>
             <CheckSquare size={13} />
             {t('masks_lib.select_all')}
           </button>
-          <button class="btn-secondary" onclick={clearAll}>
+          <button type="button" class="btn-secondary" onclick={clearAll}>
             <Square size={13} />
             {t('masks_lib.clear_all')}
           </button>
-          <button class="btn-secondary" onclick={reload} title={t('masks_lib.reload')}>
+          <button type="button" class="btn-secondary" onclick={reload} title={t('masks_lib.reload')}>
             <RotateCcw size={13} />
           </button>
-          <button class="btn-secondary open-folder" onclick={openFolder} title={t('masks_lib.open_folder')}>
+          <button type="button" class="btn-secondary open-folder" onclick={openFolder} title={t('masks_lib.open_folder')}>
             <FolderOpen size={13} />
           </button>
         </div>
@@ -143,7 +143,7 @@
       <div class="counter">
         {t('masks_lib.selected')}: <strong>{selected.length}</strong> / {files.length}
       </div>
-      <button class="btn-primary" onclick={close}>{t('masks_lib.done')}</button>
+      <button type="button" class="btn-primary" onclick={close}>{t('masks_lib.done')}</button>
     </footer>
   </div>
 {/if}

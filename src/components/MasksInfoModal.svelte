@@ -1,4 +1,4 @@
-<script>
+﻿<script>
   import { X, FolderOpen, FileImage } from '@lucide/svelte';
   import { t } from '../i18n.svelte.js';
   import { ui, markMasksInfoShown, pushToast } from '../lib/stores.svelte.js';
@@ -40,7 +40,7 @@
   <div class="modal" role="dialog" aria-modal="true">
     <header class="modal-head">
       <h2>{t('masks_info.title')}</h2>
-      <button class="close" onclick={close} aria-label="Close">
+      <button type="button" class="close" onclick={close} aria-label="Close">
         <X size={16} />
       </button>
     </header>
@@ -58,7 +58,7 @@
           <li>{t('masks_info.step2')}</li>
           <li>{t('masks_info.step3')}</li>
         </ol>
-        <button class="btn-folder" onclick={openFolder}>
+        <button type="button" class="btn-folder" onclick={openFolder}>
           <FolderOpen size={14} />
           {t('masks_lib.open_folder')}
         </button>
@@ -74,7 +74,7 @@
       </section>
 
       <section class="block support">
-        <button class="donate-toggle" onclick={() => showDonate = !showDonate}>
+        <button type="button" class="donate-toggle" onclick={() => showDonate = !showDonate}>
           <span>{t('masks_info.support_btn')}</span>
           <span class="donate-arrow">{showDonate ? '▲' : '▼'}</span>
         </button>
@@ -87,7 +87,7 @@
               <span class="wallet-label">BTC</span>
               <div class="addr">
                 <code>bc1q2ka70s4vtmrskandqj8l4d6n3kdxyxa7kf3wf7</code>
-                <button onclick={() => copyToClipboard('bc1q2ka70s4vtmrskandqj8l4d6n3kdxyxa7kf3wf7', 'BTC')}>📋</button>
+                <button type="button" onclick={() => copyToClipboard('bc1q2ka70s4vtmrskandqj8l4d6n3kdxyxa7kf3wf7', 'BTC')}>📋</button>
               </div>
             </div>
 
@@ -95,7 +95,7 @@
               <span class="wallet-label">USDT (TRC-20)</span>
               <div class="addr">
                 <code>TUjY9p6oxKmeCQwNZwMfHqHdXuabaHpgT7</code>
-                <button onclick={() => copyToClipboard('TUjY9p6oxKmeCQwNZwMfHqHdXuabaHpgT7', 'USDT')}>📋</button>
+                <button type="button" onclick={() => copyToClipboard('TUjY9p6oxKmeCQwNZwMfHqHdXuabaHpgT7', 'USDT')}>📋</button>
               </div>
             </div>
           </div>
@@ -104,7 +104,7 @@
     </div>
 
     <footer class="modal-foot">
-      <button class="btn-primary" onclick={close}>{t('masks_info.got_it')}</button>
+      <button type="button" class="btn-primary" onclick={close}>{t('masks_info.got_it')}</button>
     </footer>
   </div>
 {/if}

@@ -87,6 +87,8 @@ pub struct WearParams {
     pub streak_mask_scale: Option<f32>,
     pub streak_deform: Option<f32>,
     pub streak_disable_tiling: Option<bool>,
+    pub streak_mask_thickness: Option<f32>,
+    pub streak_random_rotation: Option<bool>,
     pub user_mask_streak: Option<String>,
     pub folder_mask_names_streak: Option<Vec<String>>,
     // Instances
@@ -120,6 +122,12 @@ pub struct WearParams {
     pub decal_random_position: Option<bool>,
     pub decal_random_rotation: Option<bool>,
     pub decal_tile_edge: Option<bool>,
+    // Geo-normal (ограничение по геометрии)
+    pub geo_normal_path: Option<String>,
+    pub geo_limit_enabled: Option<bool>,
+    pub geo_limit_mode: Option<String>,
+    pub geo_limit_softness: Option<f32>,
+    pub geo_limit_invert: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -245,6 +253,18 @@ pub fn open_user_masks_folder(app: AppHandle, subfolder: String) -> Result<(), S
     #[cfg(target_os = "linux")]
     { std::process::Command::new("xdg-open").arg(&path_str).spawn().map_err(|e| format!("xdg-open: {}", e))?; }
     Ok(())
+}
+
+#[tauri::command]
+pub fn get_geo_normal_path(app: AppHandle, file_name: String) -> Result<String, String> {
+    let base: std::path::PathBuf = app.path().app_data_dir()
+        .map_err(|e| format!("app_data_dir: {}", e))?;
+    let dir: std::path::PathBuf = base.join("WearCraft").join("tmp");
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| format!("create_dir_all {}: {}", dir.display(), e))?;
+    let path: String = dir.join(&file_name).to_string_lossy().to_string();
+    let result: Result<String, String> = Ok(path);
+    result
 }
 
 // ============ Загрузка картинок ============
@@ -536,6 +556,22 @@ fn load_decal(params: &WearParams) -> Result<Option<(image::RgbaImage, Option<Gr
     Ok(Some((rgba, height, dp)))
 }
 
+// ============ Geo-normal (для ограничения по геометрии) ============
+
+fn load_geo_normal(params: &WearParams) -> Option<RgbImage> {
+    let path = params.geo_normal_path.as_ref()?;
+    if path.is_empty() { return None; }
+    let p = Path::new(path);
+    if !p.is_file() { return None; }
+    match image::open(p) {
+        Ok(img) => Some(img.to_rgb8()),
+        Err(e) => {
+            println!("[geo_normal] Не удалось открыть {}: {}", path, e);
+            None
+        }
+    }
+}
+
 // ============ Параметры из UI ============
 
 fn build_scratch_params(p: &WearParams) -> ScratchParamsFromUI {
@@ -615,6 +651,8 @@ fn build_streak_params(p: &WearParams) -> StreakParamsFromUI {
         mask_scale: p.streak_mask_scale.unwrap_or(1.0),
         deform: p.streak_deform.unwrap_or(0.3),
         disable_tiling: p.streak_disable_tiling.unwrap_or(false),
+        mask_thickness: p.streak_mask_thickness.unwrap_or(-0.3),
+        random_rotation: p.streak_random_rotation.unwrap_or(false),
     }
 }
 
@@ -667,6 +705,13 @@ pub async fn generate_wear(app: AppHandle, params: WearParams) -> Result<WearRes
     let rust_params = build_rust_params(&params);
     let streak_params = build_streak_params(&params);
 
+    // ═══ Geo-normal (для ограничения по геометрии) ═══
+    let geo_normal = load_geo_normal(&params);
+    let geo_limit_enabled = params.geo_limit_enabled.unwrap_or(false) && geo_normal.is_some();
+    let geo_limit_mode = params.geo_limit_mode.clone().unwrap_or_else(|| "sides".to_string());
+    let geo_limit_softness = params.geo_limit_softness.unwrap_or(0.5).clamp(0.0, 1.0);
+    let geo_limit_invert = params.geo_limit_invert.unwrap_or(false);
+
     let decal_data = if preset.name == "decal" {
         load_decal(&params)?
     } else {
@@ -718,10 +763,28 @@ pub async fn generate_wear(app: AppHandle, params: WearParams) -> Result<WearRes
             )
         };
 
-        let final_set = if let Some((ref mask_img, ref mp)) = custom_mask {
-            apply_mask_to_set(&warped, mask_img, mp)
+        // ═══ GEO LIMIT — интерполяция между оригиналом и эффектом ═══
+        let limited = if geo_limit_enabled {
+            if let Some(ref gn) = geo_normal {
+                crate::core::pbr_ops::blend_by_geometry_mask(
+                    &set,
+                    &warped,
+                    gn,
+                    &geo_limit_mode,
+                    geo_limit_softness,
+                    geo_limit_invert,
+                )
+            } else {
+                warped
+            }
         } else {
             warped
+        };
+
+        let final_set = if let Some((ref mask_img, ref mp)) = custom_mask {
+            apply_mask_to_set(&limited, mask_img, mp)
+        } else {
+            limited
         };
 
         if let Some(img) = final_set.albedo.as_ref() {

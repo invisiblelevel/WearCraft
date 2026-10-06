@@ -85,6 +85,8 @@ pub struct StreakParamsFromUI {
     pub mask_scale: f32,
     pub deform: f32,
     pub disable_tiling: bool,
+    pub mask_thickness: f32,
+    pub random_rotation: bool,
 }
 
 pub struct Preset {
@@ -268,6 +270,7 @@ fn apply_scratches(
     let params = ScratchParams {
         density: sp.density, length: sp.length, thickness: sp.thickness,
         waviness: sp.waviness, branches: sp.branches, clusters: sp.clusters,
+        pos_x: sp.pos_x, pos_y: sp.pos_y,
     };
     let pattern = scratches_pattern(w, h, noise.seed(), params);
     let placement = match set.edge.as_ref() {
@@ -276,13 +279,18 @@ fn apply_scratches(
     };
     let mask = modulate_by_placement(&pattern, &placement, 0.35);
     let mut new_albedo = if sp.realistic {
-        set.albedo.as_ref().map(|a| darken_by_mask_sharp(a, &mask, amount * 1.5))
+        // Реалистичные: тёмное тело + яркая кайма по краям
+        let darkened = set.albedo.as_ref()
+            .map(|a| darken_by_mask_sharp(a, &mask, amount * 2.5));
+        if sp.rim_highlight {
+            darkened.map(|d| add_rim_highlight(&d, &mask, amount * 3.0, false))
+        } else {
+            darkened
+        }
     } else {
-        set.albedo.as_ref().map(|a| darken_by_mask_sharp(a, &mask, amount * 1.2))
+        // Нереалистичные: мягкое затемнение без каймы
+        set.albedo.as_ref().map(|a| darken_by_mask_sharp(a, &mask, amount * 1.0))
     };
-    if sp.rim_highlight {
-        if let Some(a) = new_albedo.as_ref() { new_albedo = Some(add_rim_highlight(a, &mask, amount, false)); }
-    }
     let new_roughness = if sp.realistic {
         set.roughness.as_ref().map(|r| scratch_roughness(r, &mask, amount * 0.6))
     } else {
@@ -593,6 +601,9 @@ fn apply_streaks(
         (m.body, m.height)
     };
 
+    // Толщина: для процедурного режима берём stp.thickness, для масок — stp.mask_thickness (диапазон -1..0, вдавливание).
+    let height_thickness = if use_masks { stp.mask_thickness } else { stp.thickness };
+
     let color = stp.color;
 
     let mut new_albedo = set.albedo.as_ref()
@@ -604,7 +615,7 @@ fn apply_streaks(
     }
 
     let new_normal = if stp.normal_enabled {
-        let thickness_factor = stp.thickness.max(0.01);
+        let thickness_factor = height_thickness.abs().max(0.01);
         let streak_normal = height_to_normal(&height_mask, amount * 4.0 * thickness_factor);
         if let Some(base_normal) = set.normal.as_ref() {
             Some(blend_normals(base_normal, &streak_normal, &body))
@@ -615,7 +626,7 @@ fn apply_streaks(
         set.normal.clone()
     };
 
-    let height_amt = amount * stp.thickness;
+    let height_amt = amount * height_thickness;
     let new_height = if let Some(orig_h) = set.height.as_ref() {
         let (hw, hh) = orig_h.dimensions();
         if hw != w || hh != h {
@@ -623,6 +634,7 @@ fn apply_streaks(
         } else {
             let h_raw = orig_h.as_raw();
             let m_raw = height_mask.as_raw();
+            let sign: f32 = if height_thickness >= 0.0 { 1.0 } else { -1.0 };
             let flat: Vec<u8> = (0..h as usize).into_par_iter().flat_map(|yi| {
                 let y = yi as u32;
                 let mut row = Vec::with_capacity(w as usize);
@@ -630,7 +642,7 @@ fn apply_streaks(
                     let idx = (y * w + x) as usize;
                     let hval = h_raw[idx] as f32 / 255.0;
                     let m_signed = (m_raw[idx] as f32 / 255.0 - 0.5) * 2.0;
-                    let new_h = (hval + m_signed.max(0.0) * height_amt * 0.6).clamp(0.0, 1.0);
+                    let new_h = (hval + m_signed * height_amt * sign * 0.6).clamp(0.0, 1.0);
                     row.push((new_h * 255.0) as u8);
                 }
                 row

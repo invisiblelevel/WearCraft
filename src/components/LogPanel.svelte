@@ -1,11 +1,11 @@
-<script>
+﻿<script>
   import { ClipboardList } from '@lucide/svelte';
   import { t } from '../i18n.svelte.js';
   import { ui } from '../lib/stores.svelte.js';
 </script>
 
 <footer class="log" class:open={ui.logOpen}>
-  <button class="log-toggle" onclick={() => ui.logOpen = !ui.logOpen}>
+  <button type="button" class="log-toggle" onclick={() => ui.logOpen = !ui.logOpen}>
     <ClipboardList size={14} />
     <span>{t('log.title')}</span>
     <span class="spacer"></span>

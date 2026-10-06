@@ -1,4 +1,5 @@
 // Шейдер для превью Scratches (режим масок). Копия dirt-shader.
+// + Ограничение по геометрии через vNormal.
 import * as THREE from 'three';
 
 export const MAX_MASKS = 8;
@@ -9,7 +10,7 @@ const VERT = /* glsl */`
   varying vec2 vUv;
   void main() {
     vUv = uv;
-    vNormal = normalize(normalMatrix * normal);
+    vNormal = normalize(mat3(modelMatrix) * normal);
     vec4 wp = modelMatrix * vec4(position, 1.0);
     vWorldPos = wp.xyz;
     gl_Position = projectionMatrix * viewMatrix * wp;
@@ -20,8 +21,6 @@ const FRAG = /* glsl */`
   precision highp float;
 
   #define MAX_MASKS 8
-  #define PI 3.14159265359
-  #define TAU 6.28318530718
 
   varying vec3 vWorldPos;
   varying vec3 vNormal;
@@ -60,6 +59,11 @@ const FRAG = /* glsl */`
 
   uniform vec3 uLightDir;
   uniform vec3 uCameraPos;
+
+  uniform bool uGeoLimitEnabled;
+  uniform int  uGeoLimitMode;
+  uniform float uGeoLimitSoftness;
+  uniform bool uGeoLimitInvert;
 
   vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
   vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
@@ -104,30 +108,40 @@ const FRAG = /* glsl */`
   float sampleMask(int i, vec2 uv) {
     vec4 a = uInstA[i];
     vec4 b = uInstB[i];
-    float offsetX = a.x;
-    float offsetY = a.y;
-    float scale   = a.z;
-    float rot     = a.w;
-    float flipX   = b.x;
-    float flipY   = b.y;
-    float tileable = b.z;
-
-    vec2 c = uv - 0.5 - vec2(offsetX, offsetY);
-    float cs = cos(-rot);
-    float sn = sin(-rot);
+    vec2 c = uv - 0.5 - vec2(a.x, a.y);
+    float cs = cos(-a.w);
+    float sn = sin(-a.w);
     vec2 r = vec2(c.x * cs - c.y * sn, c.x * sn + c.y * cs);
-    r /= max(scale, 0.001);
-    r.x *= flipX;
-    r.y *= flipY;
+    r /= max(a.z, 0.001);
+    r.x *= b.x;
+    r.y *= b.y;
     vec2 m = r + 0.5;
-
-    if (tileable < 0.5) {
+    if (b.z < 0.5) {
       if (m.x < 0.0 || m.x > 1.0 || m.y < 0.0 || m.y > 1.0) return 0.0;
       return pickMask(i, m).r;
     }
-
     m = fract(m);
     return pickMask(i, m).r;
+  }
+
+  float geoFactor() {
+    if (!uGeoLimitEnabled) return 1.0;
+
+    vec3 gn = normalize(vNormal);
+
+    float base;
+    if (uGeoLimitMode == 1) base = max(gn.y, 0.0);
+    else if (uGeoLimitMode == 2) base = max(-gn.y, 0.0);
+    else if (uGeoLimitMode == 3) base = abs(gn.y);
+    else base = 1.0 - abs(gn.y);
+
+    float edge = uGeoLimitSoftness * 0.5;
+    float lo = 0.5 - edge;
+    float hi = 0.5 + edge;
+    float t = clamp((base - lo) / max(hi - lo, 1e-6), 0.0, 1.0);
+    float f = t * t * (3.0 - 2.0 * t);
+    if (uGeoLimitInvert) f = 1.0 - f;
+    return f;
   }
 
   void main() {
@@ -157,6 +171,9 @@ const FRAG = /* glsl */`
     float window = 0.5 - uSharpness * 0.4;
     float body = smoothstep(0.5 - window * 0.5, 0.5 + window * 0.5, shifted);
 
+    float gf = geoFactor();
+    body *= gf;
+
     vec3 albedo = vec3(0.6, 0.6, 0.6);
     if (uHasAlbedo) albedo = texture2D(uAlbedoTex, uv).rgb;
 
@@ -178,8 +195,8 @@ const FRAG = /* glsl */`
         by1 = max(by1, sampleMask(i, warpedUv + vec2(0.0, eps)));
         by2 = max(by2, sampleMask(i, warpedUv - vec2(0.0, eps)));
       }
-      float gx = (bx1 - bx2) * 8.0 * uThickness;
-      float gy = (by1 - by2) * 8.0 * uThickness;
+      float gx = (bx1 - bx2) * 8.0 * uThickness * gf;
+      float gy = (by1 - by2) * 8.0 * uThickness * gf;
       vec3 tangent = normalize(cross(nrm, vec3(0.0, 0.0, 1.0)) + vec3(1e-5));
       vec3 bitangent = cross(nrm, tangent);
       nrm = normalize(nrm - tangent * gx - bitangent * gy);
@@ -237,6 +254,11 @@ export function createScratchesMaterial(albedoTex, normalTex, roughTex) {
 
     uLightDir:  { value: new THREE.Vector3(3.0, 4.0, 5.0).normalize() },
     uCameraPos: { value: new THREE.Vector3(0.0, 0.0, 3.0) },
+
+    uGeoLimitEnabled:  { value: false },
+    uGeoLimitMode:     { value: 0 },
+    uGeoLimitSoftness: { value: 0.5 },
+    uGeoLimitInvert:   { value: false },
   };
 
   return new THREE.ShaderMaterial({
@@ -297,4 +319,9 @@ export function updateScratchesUniforms(material, opts) {
     u.uRoughTex.value = opts.roughTex;
     u.uHasRough.value = !!opts.roughTex;
   }
+
+  if (opts.geoLimitEnabled !== undefined) u.uGeoLimitEnabled.value = !!opts.geoLimitEnabled;
+  if (opts.geoLimitMode !== undefined) u.uGeoLimitMode.value = opts.geoLimitMode;
+  if (opts.geoLimitSoftness !== undefined) u.uGeoLimitSoftness.value = opts.geoLimitSoftness;
+  if (opts.geoLimitInvert !== undefined) u.uGeoLimitInvert.value = !!opts.geoLimitInvert;
 }

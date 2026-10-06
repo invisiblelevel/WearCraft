@@ -252,6 +252,13 @@ export async function generateWear() {
         decalRandomPosition:  decalParams.randomPosition,
         decalRandomRotation:  decalParams.randomRotation,
         decalTileEdge:        decalParams.tileEdge,
+
+        // Geo-normal (ограничение по геометрии)
+        geoNormalPath:        ui.geoNormalReady ? ui.geoNormalPath : null,
+        geoLimitEnabled:      ui.geometryLimitEnabled,
+        geoLimitMode:         ui.geometryLimitMode,
+        geoLimitSoftness:     ui.geometryLimitSoftness,
+        geoLimitInvert:       ui.geometryLimitInvert,
       }
     });
 

@@ -1,6 +1,6 @@
 {
   "app.title": "WearCraft",
-  "app.version": "v1.1.0",
+  "app.version": "v1.1.1",
 
   "rail.load": "Загрузить 3D",
   "rail.loadpbr": "Загрузить PBR",
@@ -16,7 +16,7 @@
   "preset.streaks": "Потёки",
 
   "preset.custom": "Своя маска",
-  "preset.custom_warn": "Пресет не выбран. Загрузите маску или выберите пресет царапин/пятен/ржавчины.",
+  "preset.custom_warn": "Пресет не выбран. Загрузите маску или выберите пресет царапин/потёков/пятен/ржавчины.",
 
   "mask.title": "МАСКА",
   "mask.load": "Загрузить PNG",
@@ -72,11 +72,13 @@
   "streak.count": "Плотность",
   "streak.size": "Размер пятна",
   "streak.stretch": "Растяжение",
+  "streak.stretch_y": "Растяжение по Y",
   "streak.threshold": "Порог",
   "streak.sharpness": "Резкость",
   "streak.color": "Цвет",
   "streak.thickness": "Толщина",
   "streak.waviness": "Волнистость",
+  "streak.length": "Длина",
 
   "rust.title": "НАСТРОЙКИ РЖАВЧИНЫ",
   "rust.count": "Количество",
@@ -94,6 +96,17 @@
   "rust.masks_click_unselect": "Кликнуть: вернуться к пулу (все маски)",
   "rust.masks_mode_single": "Применяется только",
   "rust.masks_mode_pool": "Применяются все маски (пул)",
+
+  "geometry_limit.title": "ОГРАНИЧИТЬ ПО ГЕОМЕТРИИ",
+  "geometry_limit.enable": "Включить ограничение",
+  "geometry_limit.no_uv": "Модель без UV — ограничение недоступно.",
+  "geometry_limit.mode": "Направление",
+  "geometry_limit.mode_sides": "Только на боках",
+  "geometry_limit.mode_top": "Только сверху",
+  "geometry_limit.mode_bottom": "Только снизу",
+  "geometry_limit.mode_top_bottom": "Сверху и снизу",
+  "geometry_limit.softness": "Мягкость перехода",
+  "geometry_limit.invert": "Инвертировать",
 
   "params.title": "ВАРИАЦИИ",
   "params.variations.label": "Вариации",
@@ -118,6 +131,7 @@
   "preview.hint": "ЛКМ — вращение, колесо — зум",
   "preview.prev": "Предыдущая вариация",
   "preview.next": "Следующая вариация",
+  "preview.source": "Исходник",
 
   "log.title": "Лог",
   "log.empty": "Пока пусто",
@@ -151,6 +165,7 @@
   "info.tab.about": "О программе",
   "info.tab.version": "Версия",
   "info.tab.support": "Поддержать",
+  "info.tab.manual": "Руководство",
 
   "info.about.title": "Что такое WearCraft",
   "info.about.body": "WearCraft берёт PBR-сет и генерирует уникальные вариации износа — чтобы одинаковые ассеты перестали выглядеть как копипаста.",
@@ -166,7 +181,11 @@
   "info.version.license": "Лицензия",
 
   "info.support.title": "Поддержать проект",
-  "info.support.body": "Если WearCraft экономит тебе время — закинь дяде на папиросы.",
+  "info.support.body": "Если WearCraft заходит - поддержи деда, закинь на папиросы.",
+
+  "info.manual.title": "Руководство пользователя",
+  "info.manual.body": "Подробное руководство по всем функциям WearCraft. Откроется в браузере.",
+  "info.manual.open": "Открыть руководство",
 
   "settings.tab.performance": "Производительность",
   "settings.tab.environment": "Окружение",
@@ -210,7 +229,7 @@
 
   "drop.conflict_title": "Выбор файла",
   "drop.conflict_hint": "Найдены одинаковые карты. Выберите, какую использовать.",
-  
+
   "save.engines.title": "Движки",
   "save.unreal.name": "Сохранить для Unreal",
   "save.unreal.desc": "ORM-пак + нормаль Y-flip",
@@ -218,7 +237,7 @@
   "save.unity.desc": "Metallic/Smoothness + нормаль Y-flip",
   "save.unity.builtin": "Built-in",
   "save.unity.urp": "URP",
-  
+
   "mask.add_user": "Своя маска",
   "mask.library": "Библиотека масок",
   "mask.user_only_hint": "Используется только она. Чтобы смешать с масками из папки — сбрось и открой библиотеку.",
@@ -244,19 +263,12 @@
   "masks_info.about_user_mask_title": "Одна своя маска",
   "masks_info.about_user_mask": "Кнопка «Своя маска» берёт ОДНУ маску и использует ТОЛЬКО её. Чтобы смешать — отключи её и работай через «Библиотеку».",
   "masks_info.got_it": "Понятно",
-  
   "masks_info.support_btn": "Поддержать проект",
-  "preview.source": "Исходник",
-  
+
   "spots.pos_x": "Позиция X",
   "spots.pos_y": "Позиция Y",
   "spots.rotation": "Поворот",
   "spots.random_rotation": "Случайный поворот",
-  
-  "info.tab.manual": "Руководство",
-  "info.manual.title": "Руководство пользователя",
-  "info.manual.body": "Подробное руководство по всем функциям WearCraft. Откроется в браузере.",
-  "info.manual.open": "Открыть руководство",
 
   "decal.title": "ДЕКАЛЬ",
   "decal.section_image": "Изображение",
@@ -283,8 +295,7 @@
   "decal.random_position": "Случайная позиция",
   "decal.random_rotation": "Случайный поворот",
   "decal.tile_edge": "Тайлинг по краям",
-  
+
   "rail.generate_need_mask": "Загрузите маску",
-  "rail.generate_need_decal": "Загрузите картинку",
-  "streak.length": "Длина"
+  "rail.generate_need_decal": "Загрузите картинку"
 }

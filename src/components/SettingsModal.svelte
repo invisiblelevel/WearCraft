@@ -1,4 +1,4 @@
-<script>
+﻿<script>
   import { X, Monitor, Save, FolderOpen, RefreshCw, Trash2, Maximize2, Sun, Image as ImageIcon } from '@lucide/svelte';
   import { t } from '../i18n.svelte.js';
   import { settings, saveSettings, resetSettings, ui, pbr, pushToast, pushLog, setEnvironment, setEnvironmentIntensity, setShowHdrBackground } from '../lib/stores.svelte.js';
@@ -95,20 +95,20 @@
   <div class="modal" role="dialog" aria-modal="true">
     <header class="modal-head">
       <div class="tabs">
-        <button class:active={tab === 'performance'} onclick={() => tab = 'performance'}>
+        <button type="button" class:active={tab === 'performance'} onclick={() => tab = 'performance'}>
           <Monitor size={14} /> {t('settings.tab.performance')}
         </button>
-        <button class:active={tab === 'environment'} onclick={() => tab = 'environment'}>
+        <button type="button" class:active={tab === 'environment'} onclick={() => tab = 'environment'}>
           <Sun size={14} /> {t('settings.tab.environment')}
         </button>
-        <button class:active={tab === 'interface'} onclick={() => tab = 'interface'}>
+        <button type="button" class:active={tab === 'interface'} onclick={() => tab = 'interface'}>
           <Maximize2 size={14} /> {t('settings.tab.interface')}
         </button>
-        <button class:active={tab === 'saving'} onclick={() => tab = 'saving'}>
+        <button type="button" class:active={tab === 'saving'} onclick={() => tab = 'saving'}>
           <Save size={14} /> {t('settings.tab.saving')}
         </button>
       </div>
-      <button class="close" onclick={close} aria-label="Close">
+      <button type="button" class="close" onclick={close} aria-label="Close">
         <X size={16} />
       </button>
     </header>
@@ -137,7 +137,7 @@
             <div class="setting-hint">{t('settings.clear_cache.hint')}</div>
           </div>
           <div class="setting-control">
-            <button class="action-btn" onclick={onClearCache}>
+            <button type="button" class="action-btn" onclick={onClearCache}>
               <Trash2 size={14} /> {t('settings.clear_cache.btn')}
             </button>
           </div>
@@ -148,7 +148,7 @@
 
         <div class="env-grid">
           {#each ENVIRONMENT_PRESETS as preset}
-            <button
+            <button type="button"
               class="env-tile"
               class:active={ui.environment === preset.id}
               onclick={() => pickEnv(preset.id)}
@@ -208,7 +208,7 @@
           <div class="setting-control">
             <div class="zoom-buttons">
               {#each ZOOM_STEPS as step}
-                <button
+                <button type="button"
                   class="zoom-step"
                   class:active={Math.abs(ui.zoom - step) < 0.001}
                   onclick={() => setZoom(step)}
@@ -259,7 +259,7 @@
               <div class="setting-hint">{t('settings.save_dir.hint')}</div>
             </div>
             <div class="setting-control">
-              <button class="dir-btn" onclick={pickSaveDir}>
+              <button type="button" class="dir-btn" onclick={pickSaveDir}>
                 <FolderOpen size={14} />
                 {settings.saveDir ? settings.saveDir : t('settings.save_dir.pick')}
               </button>
@@ -270,10 +270,10 @@
     </div>
 
     <footer class="modal-foot">
-      <button class="reset-btn" onclick={onReset}>
+      <button type="button" class="reset-btn" onclick={onReset}>
         <RefreshCw size={14} /> {t('settings.reset')}
       </button>
-      <button class="close-btn" onclick={close}>{t('settings.close')}</button>
+      <button type="button" class="close-btn" onclick={close}>{t('settings.close')}</button>
     </footer>
   </div>
 {/if}
