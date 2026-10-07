@@ -1,5 +1,7 @@
-// Шейдер для превью Scratches (режим масок). Копия dirt-shader.
+// Шейдер для превью Scratches через маски. Копия dirt-shader.
 // + Ограничение по геометрии через vNormal.
+// + UV-острова через uUvMask.
+// + Triplanar projection через vWorldPos (только для режима масок).
 import * as THREE from 'three';
 
 export const MAX_MASKS = 8;
@@ -65,6 +67,14 @@ const FRAG = /* glsl */`
   uniform float uGeoLimitSoftness;
   uniform bool uGeoLimitInvert;
 
+  uniform sampler2D uUvMask;
+  uniform bool uUvMaskEnabled;
+
+  uniform bool uTriplanarEnabled;
+  uniform vec3 uModelMin;
+  uniform vec3 uModelMax;
+  uniform float uTriScale;
+
   vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
   vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
   vec3 permute(vec3 x) { return mod289(((x*34.0)+1.0)*x); }
@@ -91,6 +101,30 @@ const FRAG = /* glsl */`
     g.x = a0.x * x0.x + h.x * x0.y;
     g.yz = a0.yz * x12.xz + h.yz * x12.yw;
     return 130.0 * dot(m, g);
+  }
+
+  vec2 triplanarUV(vec3 worldPos, vec3 nrm, float scale) {
+    vec3 p = worldPos * scale;
+    vec3 n = normalize(nrm);
+    vec3 w = vec3(abs(n.x), abs(n.y), abs(n.z));
+    w = w * w * w * w;
+    float sum = max(w.x + w.y + w.z, 1e-6);
+    w /= sum;
+
+    vec2 uv_x = p.yz;
+    vec2 uv_y = p.xz;
+    vec2 uv_z = p.xy;
+
+    return uv_x * w.x + uv_y * w.y + uv_z * w.z;
+  }
+
+  vec2 triplanarMaskUV(vec2 triUV, vec2 repeat, float rotation) {
+    vec2 t = triUV - 0.5;
+    float cs = cos(-rotation);
+    float sn = sin(-rotation);
+    t = vec2(t.x * cs - t.y * sn, t.x * sn + t.y * cs);
+    t = t * repeat + 0.5;
+    return t;
   }
 
   vec4 pickMask(int i, vec2 uv) {
@@ -153,10 +187,19 @@ const FRAG = /* glsl */`
 
     vec2 uv = tiledUv;
 
-    vec2 warpedUv = uv;
+    vec2 maskUv;
+    if (uTriplanarEnabled) {
+      vec3 p = (vWorldPos - uModelMin) / max(uModelMax - uModelMin, vec3(1e-6));
+      vec2 tri = triplanarUV(p, vNormal, uTriScale);
+      maskUv = triplanarMaskUV(tri, uRepeat, uRotation);
+    } else {
+      maskUv = uv;
+    }
+
+    vec2 warpedUv = maskUv;
     if (uDeform > 0.01) {
-      float nx = snoise2(uv * 3.0);
-      float ny = snoise2(uv * 3.0 + vec2(100.0, 100.0));
+      float nx = snoise2(maskUv * 3.0);
+      float ny = snoise2(maskUv * 3.0 + vec2(100.0, 100.0));
       warpedUv += vec2(nx, ny) * 0.1 * uDeform;
     }
 
@@ -174,6 +217,12 @@ const FRAG = /* glsl */`
     float gf = geoFactor();
     body *= gf;
 
+    float uv_m = 1.0;
+    if (uUvMaskEnabled) {
+      uv_m = texture2D(uUvMask, uv).r;
+      body *= uv_m;
+    }
+
     vec3 albedo = vec3(0.6, 0.6, 0.6);
     if (uHasAlbedo) albedo = texture2D(uAlbedoTex, uv).rgb;
 
@@ -185,7 +234,7 @@ const FRAG = /* glsl */`
       nrm = normalize(nrm + texN * 0.5);
     }
 
-    if (uThickness > 0.01 && uAmount > 0.01) {
+    if (abs(uThickness) > 0.01 && uAmount > 0.01) {
       float eps = 1.0 / 512.0;
       float bx1 = 0.0, bx2 = 0.0, by1 = 0.0, by2 = 0.0;
       for (int i = 0; i < MAX_MASKS; i++) {
@@ -197,6 +246,10 @@ const FRAG = /* glsl */`
       }
       float gx = (bx1 - bx2) * 8.0 * uThickness * gf;
       float gy = (by1 - by2) * 8.0 * uThickness * gf;
+      if (uUvMaskEnabled) {
+        gx *= uv_m;
+        gy *= uv_m;
+      }
       vec3 tangent = normalize(cross(nrm, vec3(0.0, 0.0, 1.0)) + vec3(1e-5));
       vec3 bitangent = cross(nrm, tangent);
       nrm = normalize(nrm - tangent * gx - bitangent * gy);
@@ -246,7 +299,7 @@ export function createScratchesMaterial(albedoTex, normalTex, roughTex) {
     uSharpness: { value: 0.5 },
     uDeform:    { value: 0.3 },
     uThickness: { value: -0.3 },
-    uAmount:    { value: 0.7 },
+    uAmount:    { value: 0.5 },
     uColor:     { value: new THREE.Color(95/255, 85/255, 75/255) },
 
     uRepeat:   { value: new THREE.Vector2(1.0, 1.0) },
@@ -259,6 +312,14 @@ export function createScratchesMaterial(albedoTex, normalTex, roughTex) {
     uGeoLimitMode:     { value: 0 },
     uGeoLimitSoftness: { value: 0.5 },
     uGeoLimitInvert:   { value: false },
+
+    uUvMask:        { value: null },
+    uUvMaskEnabled: { value: false },
+
+    uTriplanarEnabled: { value: false },
+    uModelMin:         { value: new THREE.Vector3(-0.5, -0.5, -0.5) },
+    uModelMax:         { value: new THREE.Vector3(0.5, 0.5, 0.5) },
+    uTriScale:         { value: 2.0 },
   };
 
   return new THREE.ShaderMaterial({
@@ -298,7 +359,7 @@ export function updateScratchesUniforms(material, opts) {
   u.uSharpness.value = opts.sharpness ?? 0.5;
   u.uDeform.value    = opts.deform ?? 0.3;
   u.uThickness.value = opts.thickness ?? -0.3;
-  u.uAmount.value    = opts.amount ?? 0.7;
+  u.uAmount.value    = opts.amount ?? 0.5;
 
   if (opts.color) {
     u.uColor.value.setRGB(opts.color[0]/255, opts.color[1]/255, opts.color[2]/255);
@@ -324,4 +385,14 @@ export function updateScratchesUniforms(material, opts) {
   if (opts.geoLimitMode !== undefined) u.uGeoLimitMode.value = opts.geoLimitMode;
   if (opts.geoLimitSoftness !== undefined) u.uGeoLimitSoftness.value = opts.geoLimitSoftness;
   if (opts.geoLimitInvert !== undefined) u.uGeoLimitInvert.value = !!opts.geoLimitInvert;
+
+  if (opts.uvMask !== undefined) {
+    u.uUvMask.value = opts.uvMask;
+    u.uUvMaskEnabled.value = !!opts.uvMask;
+  }
+
+  if (opts.triplanarEnabled !== undefined) u.uTriplanarEnabled.value = !!opts.triplanarEnabled;
+  if (opts.modelMin) u.uModelMin.value.set(opts.modelMin[0], opts.modelMin[1], opts.modelMin[2]);
+  if (opts.modelMax) u.uModelMax.value.set(opts.modelMax[0], opts.modelMax[1], opts.modelMax[2]);
+  if (opts.triScale !== undefined) u.uTriScale.value = opts.triScale;
 }

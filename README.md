@@ -1,6 +1,6 @@
 **Procedural wear generator for PBR textures**
 
-![Version](https://img.shields.io/badge/version-1.1.0-orange)
+![Version](https://img.shields.io/badge/version-1.2.0-orange)
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Tauri](https://img.shields.io/badge/Tauri-2.x-FFC131)
@@ -23,6 +23,9 @@ The built-in 3D viewer shows the result in real time. **The preview fully matche
 ### Features
 
 - **Presets:** Custom mask, procedural scratches, streaks (drips), spots, rust, decal
+- **Triplanar projection:** Patterns generated in world-space, so they don't deform on complex models (weapons, canisters, equipment). Requires loading a 3D model — for primitives (sphere / cube / cylinder / torus) UV mapping is used.
+- **UV Islands:** Patterns are clipped to the model's UV layout, no more pattern bleeding outside unwrapped areas.
+- **Geometry Limit:** Apply wear only to top / bottom / sides of a surface (based on normals). Sphere + loaded model only.
 - **Decal:** Project any PNG/JPG onto the model like a sticker — position, scale, rotation, opacity, aspect ratio, tiling, height-based bump
 - **Masks:** Own mask (single PNG) or library (folder-based, %APPDATA%)
 - **Positioning:** Move, rotate, scale each spot. Tiling control per variation
@@ -32,19 +35,27 @@ The built-in 3D viewer shows the result in real time. **The preview fully matche
 - **UI Zoom:** Ctrl+= / Ctrl+− / Ctrl+0, steps 75%–200%
 - **Engine Export:** Unreal Engine (ORM + DX normal), Unity (MetallicSmoothness, Built-in / URP)
 - **i18n:** Russian, English, Chinese
-- **PBR Presets:** All parameters tuned per material type
 
-### What's new in 1.1.0
+### What's new in 1.2.0
 
-- **Decal** — separate mode: project any image (PNG/JPG) onto the model like a sticker. Real-time preview, opacity, affect albedo / roughness / normal, height-based bump (or use image brightness), random position / rotation per variation, tile edges.
-- **HDR Environment** — 5 presets via Settings → Environment tab. Intensity 0–200%. Optional HDR backdrop.
-- **UI Zoom** — Ctrl+= / Ctrl+− / Ctrl+0. Steps 75%–200%. Saved in localStorage.
-- **Streaks (procedural)** — new formula (value_noise + fbm + vertical stretch). Now reads as actual drips, not spikes.
-- **Scratches** — two modes: procedural (Bezier) + mask-based (real-time preview).
-- **"Generate" button** moved to the viewport (top-right, accent pill).
-- **Variations** block reworked — slider 1..50 + input field.
+- **Triplanar projection** — patterns are now generated in world-space instead of UV-space. On complex models (weapons, canisters, equipment), wear patterns no longer deform or stretch depending on UV density. Uses the same physical size across the whole model.
+- **UV Islands** — patterns are clipped to the model's UV islands. No more abrupt pattern cutoffs at unwrapped boundaries. Works automatically on any loaded model.
+- **Geometry Limit** — new feature: restrict the effect to top / bottom / sides of a surface, based on the model's normals. Smoothness slider, invert option. Sphere + loaded 3D model only.
+- **Params Panel refactored** — the 1800-line `ParamsPanel.svelte` was split into 12 files. Much easier to maintain and extend.
+- **Fixed:** pattern position now correctly updates when switching between variations in the preview.
+- **Fixed:** mask preview no longer stays on top of generated variations.
+- **Fixed:** variation cache is cleared before each new generation.
+- **Streaks (procedural)** — procedural preview is disabled. As with procedural scratches, this preset generates only after pressing Generate (preview during setup isn't shown due to performance). Streaks via masks still have real-time preview.
 
 Full changelog: [Releases](https://github.com/invisiblelevel/WearCraft/releases)
+
+### What was in 1.1.0
+
+- **Decal** — separate mode: project any image (PNG/JPG) onto the model like a sticker. Real-time preview, opacity, affect albedo / roughness / normal, height-based bump.
+- **HDR Environment** — 5 presets via Settings → Environment tab. Intensity 0–200%. Optional HDR backdrop.
+- **UI Zoom** — Ctrl+= / Ctrl+− / Ctrl+0. Steps 75%–200%.
+- **Streaks (procedural)** — value_noise + fbm + vertical stretch.
+- **Scratches** — two modes: procedural (Bezier) + mask-based (real-time preview).
 
 ### Requirements
 
@@ -114,6 +125,9 @@ Download the installer from Releases and run it. Fully offline installation — 
 - [x] HDR environment (5 presets + intensity)
 - [x] UI zoom (Ctrl+= / Ctrl+− / Ctrl+0)
 - [x] Decal (image projection with height)
+- [x] Triplanar projection (world-space wear)
+- [x] UV islands (clipping to model layout)
+- [x] Geometry limit (normals-based restriction)
 - [ ] GPU compute for generation
 - [ ] Light theme
 - [ ] Resizable panels
@@ -136,6 +150,9 @@ MIT License — free for commercial use.
 ### Возможности
 
 - **Пресеты:** Своя маска, процедурные царапины, потёки, пятна, ржавчина, декаль
+- **Triplanar-проекция:** Паттерны генерируются в world-space, не деформируются на сложных моделях (оружие, канистры, техника). Требует загрузки 3D-модели — для примитивов (сфера / куб / цилиндр / торус) используется UV-развёртка.
+- **UV-острова:** Паттерны обрезаются по UV-развёртке модели — больше нет «обрывов» за пределами развёрнутых зон.
+- **Ограничение по геометрии:** Наложение износа только на верх / низ / бока поверхности (по нормалям). Только сфера и загруженная модель.
 - **Decal (наклейка):** Наложение любой картинки PNG/JPG на модель как стикера — позиция, масштаб, поворот, прозрачность, пропорции, тайлинг, объём от height-карты
 - **Маски:** Своя маска (один PNG) или библиотека (папка в %APPDATA%)
 - **Позиционирование:** Движение, поворот, масштаб каждого пятна. Управление тайлингом на вариацию
@@ -145,19 +162,27 @@ MIT License — free for commercial use.
 - **Зум UI:** Ctrl+= / Ctrl+− / Ctrl+0, ступени 75%–200%
 - **Экспорт в движки:** Unreal Engine (ORM + DX normal), Unity (MetallicSmoothness, Built-in / URP)
 - **i18n:** Русский, английский, китайский
-- **PBR-пресеты:** Все параметры настроены под тип материала
 
-### Что нового в 1.1.0
+### Что нового в 1.2.0
 
-- **Decal** — отдельный режим: наложение любой картинки (PNG/JPG) на модель как стикера. Real-time превью, прозрачность, влияние на albedo / roughness / normal, объём от height-карты (или яркость картинки), случайная позиция / поворот для каждой вариации, тайлинг по краям.
-- **HDR-окружение** — 5 пресетов через Settings → вкладка «Окружение». Интенсивность 0–200%. Опциональный HDR-фон.
-- **Зум UI** — Ctrl+= / Ctrl+− / Ctrl+0. Ступени 75%–200%. Сохраняется в localStorage.
-- **Streaks (процедурный)** — новая формула (value_noise + fbm + вертикальный stretch). Теперь выглядит как настоящие потёки, а не штыри.
-- **Scratches** — два режима: процедурно (Bezier) + через маски (real-time превью).
-- **Кнопка «Генерировать»** переехала во viewport (top-right, accent pill).
-- **Блок «Вариации»** переработан — слайдер 1..50 + поле ввода.
+- **Triplanar-проекция** — паттерны теперь генерируются в world-space вместо UV-пространства. На сложных моделях (оружие, канистры, техника) паттерн износа больше не деформируется и не растягивается в зависимости от UV-плотности. Использует единый физический размер на всей модели.
+- **UV-острова** — паттерны обрезаются по UV-островам модели. Больше нет резких обрывов паттерна на границах развёртки. Работает автоматически на любой загруженной модели.
+- **Ограничение по геометрии** — новая функция: ограничить эффект верхом / низом / боками поверхности на основе нормалей модели. Слайдер мягкости, инвертирование. Только сфера + загруженная 3D-модель.
+- **ParamsPanel отрефакторен** — 1800-строчный `ParamsPanel.svelte` разбит на 12 файлов. Значительно проще поддерживать и расширять.
+- **Фикс:** позиция паттерна теперь корректно обновляется при переключении между вариациями в превью.
+- **Фикс:** mask-preview больше не висит поверх сгенерированных вариаций.
+- **Фикс:** кэш вариаций очищается перед каждой новой генерацией.
+- **Streaks (процедурный)** — процедурное превью отключено. Как и с процедурными царапинами, этот пресет генерируется только после нажатия кнопки «Генерировать» (превью при настройке не показывается из-за производительности). Streaks через маски — real-time превью работает.
 
 Полный changelog: [Releases](https://github.com/invisiblelevel/WearCraft/releases)
+
+### Что было в 1.1.0
+
+- **Decal** — отдельный режим: наложение любой картинки (PNG/JPG) на модель как стикера.
+- **HDR-окружение** — 5 пресетов через Settings → вкладка «Окружение».
+- **Зум UI** — Ctrl+= / Ctrl+− / Ctrl+0.
+- **Streaks (процедурный)** — value_noise + fbm + вертикальный stretch.
+- **Scratches** — два режима: процедурно (Bezier) + через маски (real-time превью).
 
 ### Требования
 
@@ -199,18 +224,18 @@ MIT License — free for commercial use.
 
 **Минимальные:**
 - ОС: Windows 10 / 11 (64-bit)
-- Процессор: 4 ядра 2.0 ГГц (Intel i5 / AMD Ryzen 5 или аналогичный)
+- Процессор: 4 ядра 2.0 ГГц
 - Память: 8 ГБ RAM
-- Графика: Встроенная GPU (Intel UHD 620 / AMD Vega 8) или лучше
-- DirectX: версия 11
-- Место: 2 ГБ свободно
+- Графика: Встроенная GPU или лучше
+- DirectX: 11
+- Место: 2 ГБ
 
 **Рекомендуемые:**
 - ОС: Windows 11 (64-bit)
-- Процессор: 6 ядер 3.0 ГГц (Intel i7 / AMD Ryzen 7 или аналогичный)
+- Процессор: 6 ядер 3.0 ГГц
 - Память: 16 ГБ RAM
 - Графика: NVIDIA GTX 1650 / AMD RX 5700 или лучше
-- DirectX: версия 12
+- DirectX: 12
 - Место: 8 ГБ SSD
 
 ### План развития
@@ -227,6 +252,9 @@ MIT License — free for commercial use.
 - [x] HDR-окружение (5 пресетов + интенсивность)
 - [x] Зум UI (Ctrl+= / Ctrl+− / Ctrl+0)
 - [x] Decal (проекция картинки с объёмом)
+- [x] Triplanar-проекция (world-space износ)
+- [x] UV-острова (обрезка по развёртке)
+- [x] Ограничение по геометрии (по нормалям)
 - [ ] GPU compute для генерации
 - [ ] Светлая тема
 - [ ] Ресайз панелей
@@ -242,13 +270,16 @@ MIT License — бесплатно для коммерческого испол�
 
 ### 这是什么
 
-**WearCraft** 是一款用于 PBR 贴图集程序化磨损生成的桌面应用程序。加载 PBR 集（反照率、法线、粗糙度、环境光遮蔽、高度、金属度、边缘），生成 N 个独特的磨损变体，并导出到游戏引擎。
+**WearCraft** 是一款用于 PBR 贴图集程序化磨损生成的桌面应用程序。加载 PBR 集，生成 N 个独特的磨损变体，并导出到游戏引擎。
 
 内置 3D 查看器实时显示结果。**预览与烘焙结果完全一致**——所见即所得。
 
 ### 功能
 
 - **预设：** 自定义遮罩、程序化划痕、流痕、斑点、锈蚀、贴花
+- **Triplanar 投影：** 图案在世界空间中生成，不会在复杂模型上变形（武器、罐、设备）。需要加载 3D 模型——对于基本体（球体 / 立方体 / 圆柱体 / 圆环）使用 UV 映射。
+- **UV 岛屿：** 图案按模型的 UV 布局进行裁剪——不再出现 UV 展开区域外的图案溢出。
+- **几何限制：** 仅将磨损应用于表面的顶部 / 底部 / 侧面（基于法线）。仅球体和加载的模型。
 - **贴花：** 将任意 PNG/JPG 图像像贴纸一样投射到模型上——位置、缩放、旋转、不透明度、宽高比、平铺、基于高度的凹凸
 - **遮罩：** 自定义遮罩（单个 PNG）或库（基于文件夹，%APPDATA%）
 - **定位：** 移动、旋转、缩放每个斑点。每个变体的平铺控制
@@ -258,19 +289,27 @@ MIT License — бесплатно для коммерческого испол�
 - **UI 缩放：** Ctrl+= / Ctrl+− / Ctrl+0，步长 75%–200%
 - **引擎导出：** Unreal Engine（ORM + DX 法线），Unity（MetallicSmoothness，Built-in / URP）
 - **国际化：** 俄语、英语、中文
-- **PBR 预设：** 所有参数按材质类型调整
+
+### 1.2.0 更新内容
+
+- **Triplanar 投影** — 图案现在在世界空间中生成，而不是在 UV 空间中。在复杂模型（武器、罐、设备）上，磨损图案不再根据 UV 密度变形或拉伸。整个模型上使用相同的物理尺寸。
+- **UV 岛屿** — 图案按模型的 UV 岛屿裁剪。UV 展开边界处不再出现突然的图案切断。在任何已加载模型上自动生效。
+- **几何限制** — 新功能：基于模型的法线，将效果限制在表面的顶部 / 底部 / 侧面。平滑度滑块、反转选项。仅球体 + 加载的 3D 模型。
+- **参数面板重构** — 1800 行的 `ParamsPanel.svelte` 拆分为 12 个文件。更易于维护和扩展。
+- **修复：** 在预览中切换变体时，图案位置现在正确更新。
+- **修复：** 遮罩预览不再停留在生成的变体之上。
+- **修复：** 每次新生成前清空变体缓存。
+- **流痕（程序化）** — 程序化预览已禁用。与程序化划痕一样，此预设仅在按下生成按钮后生成。通过遮罩的流痕仍可实时预览。
+
+完整更新日志：[Releases](https://github.com/invisiblelevel/WearCraft/releases)
 
 ### 1.1.0 更新内容
 
-- **贴花** — 独立模式：将任意图像（PNG/JPG）像贴纸一样投射到模型上。实时预览、不透明度、影响反照率 / 粗糙度 / 法线、基于高度的凹凸（或使用图像亮度）、每个变体的随机位置 / 旋转、边缘平铺。
-- **HDR 环境** — 通过 Settings → 环境标签页访问 5 个预设。强度 0–200%。可选 HDR 背景。
-- **UI 缩放** — Ctrl+= / Ctrl+− / Ctrl+0。步长 75%–200%。保存在 localStorage 中。
-- **流痕（程序化）** — 新公式（value_noise + fbm + 垂直拉伸）。现在看起来像真正的流痕，而不是尖刺。
+- **贴花** — 独立模式：将任意图像（PNG/JPG）像贴纸一样投射到模型上。
+- **HDR 环境** — 通过 Settings → 环境标签页访问 5 个预设。
+- **UI 缩放** — Ctrl+= / Ctrl+− / Ctrl+0。
+- **流痕（程序化）** — value_noise + fbm + 垂直拉伸。
 - **划痕** — 两种模式：程序化（Bezier）+ 基于遮罩（实时预览）。
-- **"生成" 按钮** 移至视口（右上角，强调色胶囊）。
-- **"变体" 区块** 重新设计 — 滑块 1..50 + 输入字段。
-
-完整更新日志：[Releases](https://github.com/invisiblelevel/WearCraft/releases)
 
 ### 系统要求
 
@@ -312,15 +351,15 @@ MIT License — бесплатно для коммерческого испол�
 
 **最低配置：**
 - 操作系统：Windows 10 / 11（64 位）
-- 处理器：四核 2.0 GHz（Intel i5 / AMD Ryzen 5 或同等）
+- 处理器：四核 2.0 GHz
 - 内存：8 GB RAM
-- 显卡：集成显卡（Intel UHD 620 / AMD Vega 8）或更好
+- 显卡：集成显卡或更好
 - DirectX：版本 11
 - 存储：2 GB 可用空间
 
 **推荐配置：**
 - 操作系统：Windows 11（64 位）
-- 处理器：六核 3.0 GHz（Intel i7 / AMD Ryzen 7 或同等）
+- 处理器：六核 3.0 GHz
 - 内存：16 GB RAM
 - 显卡：NVIDIA GTX 1650 / AMD RX 5700 或更好
 - DirectX：版本 12
@@ -340,6 +379,9 @@ MIT License — бесплатно для коммерческого испол�
 - [x] HDR 环境（5 个预设 + 强度）
 - [x] UI 缩放（Ctrl+= / Ctrl+− / Ctrl+0）
 - [x] 贴花（带高度的图像投射）
+- [x] Triplanar 投影（世界空间磨损）
+- [x] UV 岛屿（按布局裁剪）
+- [x] 几何限制（基于法线）
 - [ ] 用于生成的 GPU 计算
 - [ ] 浅色主题
 - [ ] 可调整大小的面板
@@ -351,5 +393,5 @@ MIT 许可证——可免费用于商业用途。
 ---
 
 **Author:** INV.LVL
-**Version:** 1.1.0
+**Version:** 1.2.0
 **Date:** 2026

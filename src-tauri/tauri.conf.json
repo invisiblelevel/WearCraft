@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "WearCraft",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "identifier": "com.wearcraft.app",
   "build": {
     "frontendDist": "../dist",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "WearCraft v1.1.1",
+        "title": "WearCraft v1.2.0",
         "width": 1280,
         "height": 800,
         "resizable": true,

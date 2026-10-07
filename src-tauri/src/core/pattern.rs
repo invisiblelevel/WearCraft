@@ -23,6 +23,122 @@ fn fbm01(noise: &TilingNoise, x: f32, y: f32, w: f32, h: f32, octaves: u32, pers
     (n + 1.0) * 0.5
 }
 
+// ============ UV-MASK ============
+
+fn apply_uv_mask_gray(img: &mut GrayImage, uv_mask: &GrayImage) {
+    let (w, h) = img.dimensions();
+    if w == 0 || h == 0 { return; }
+
+    let mask_owned;
+    let mask_ref = if uv_mask.width() != w || uv_mask.height() != h {
+        mask_owned = image::imageops::resize(uv_mask, w, h, image::imageops::FilterType::Lanczos3);
+        &mask_owned
+    } else {
+        uv_mask
+    };
+
+    let raw = img.as_raw();
+    let m_raw = mask_ref.as_raw();
+    let out: Vec<u8> = (0..(w * h) as usize).into_par_iter().map(|i| {
+        let v = raw[i] as f32 / 255.0;
+        let m = m_raw[i] as f32 / 255.0;
+        ((v * m).clamp(0.0, 1.0) * 255.0) as u8
+    }).collect();
+    img.copy_from_slice(&out);
+}
+
+// ============ TRIPLANAR ============
+//
+// Считает UV-координаты для сэмплинга шума ИЗ world-position пикселя,
+// а не из UV-развёртки. Размер пятна — в единицах модели.
+//
+// world_pos: [0,1]^3 (норм. bbox модели).
+// normal:    нормаль поверхности в этой точке (единичный вектор).
+// scale:     множитель размера пятна (аналог `count` — сколько «плиток»).
+//
+// Возвращает vec2 (u, v) для сэмплинга в диапазоне [0..scale].
+
+#[inline]
+pub fn triplanar_uv(world_pos: [f32; 3], normal: [f32; 3], scale: f32) -> [f32; 2] {
+    let p = [world_pos[0] * scale, world_pos[1] * scale, world_pos[2] * scale];
+
+    let n = {
+        let len = (normal[0]*normal[0] + normal[1]*normal[1] + normal[2]*normal[2]).sqrt().max(1e-6);
+        [normal[0]/len, normal[1]/len, normal[2]/len]
+    };
+
+    // Веса по осям: abs(n)^4 — резкий blending, меньше швов на диагоналях
+    let mut w = [n[0].abs(), n[1].abs(), n[2].abs()];
+    w[0] = w[0] * w[0] * w[0] * w[0];
+    w[1] = w[1] * w[1] * w[1] * w[1];
+    w[2] = w[2] * w[2] * w[2] * w[2];
+    let sum = (w[0] + w[1] + w[2]).max(1e-6);
+    w[0] /= sum;
+    w[1] /= sum;
+    w[2] /= sum;
+
+    // Проекции:
+    //   по X (вес w[0]) — плоскость YZ
+    //   по Y (вес w[1]) — плоскость XZ
+    //   по Z (вес w[2]) — плоскость XY
+    let uv_x = [p[1], p[2]];  // YZ
+    let uv_y = [p[0], p[2]];  // XZ
+    let uv_z = [p[0], p[1]];  // XY
+
+    [
+        uv_x[0] * w[0] + uv_y[0] * w[1] + uv_z[0] * w[2],
+        uv_x[1] * w[0] + uv_y[1] * w[1] + uv_z[1] * w[2],
+    ]
+}
+
+// Извлекает world_pos и нормаль для пикселя.
+// wp_raw: RGB world-pos (норм. bbox), normal_pool: RGB normal-map (тангенс-пространство → [0,1]).
+// Если normal_pool нет — используем «плоскую» нормаль (0,0,1) в тан-пространстве → мировая норма
+// аппроксимируется через градиент world-pos.
+
+#[inline]
+fn sample_world_pos(wp: &RgbImage, x: u32, y: u32) -> [f32; 3] {
+    let p = wp.get_pixel(x, y);
+    [p[0] as f32 / 255.0, p[1] as f32 / 255.0, p[2] as f32 / 255.0]
+}
+
+// Аппроксимация мировой нормали через центральные разности world_pos.
+// Работает всегда (не нужна normal-map). Даёт корректные направления осей.
+#[inline]
+fn normal_from_world_pos(wp: &RgbImage, x: u32, y: u32) -> [f32; 3] {
+    let (w, h) = wp.dimensions();
+    let xl = if x == 0 { 0 } else { x - 1 };
+    let xr = if x + 1 >= w { w - 1 } else { x + 1 };
+    let yu = if y == 0 { 0 } else { y - 1 };
+    let yd = if y + 1 >= h { h - 1 } else { y + 1 };
+
+    let pl = wp.get_pixel(xl, y);
+    let pr = wp.get_pixel(xr, y);
+    let pu = wp.get_pixel(x, yu);
+    let pd = wp.get_pixel(x, yd);
+
+    // Градиенты world-pos по UV → дают касательные. Нормаль = cross(tangent_u, tangent_v).
+    // Упрощённо: используем разницы по X и Y экранных пикселей как псевдо-тангенсы.
+    let dux = (pr[0] as f32 - pl[0] as f32) / 255.0;
+    let duy = (pr[1] as f32 - pl[1] as f32) / 255.0;
+    let duz = (pr[2] as f32 - pl[2] as f32) / 255.0;
+
+    let dvx = (pd[0] as f32 - pu[0] as f32) / 255.0;
+    let dvy = (pd[1] as f32 - pu[1] as f32) / 255.0;
+    let dvz = (pd[2] as f32 - pu[2] as f32) / 255.0;
+
+    let nx = duy * dvz - duz * dvy;
+    let ny = duz * dvx - dux * dvz;
+    let nz = dux * dvy - duy * dvx;
+
+    let len = (nx*nx + ny*ny + nz*nz).sqrt();
+    if len < 1e-6 {
+        [0.0, 0.0, 1.0]
+    } else {
+        [nx / len, ny / len, nz / len]
+    }
+}
+
 // ============ Scratches ============
 
 #[derive(Debug, Clone, Copy)]
@@ -92,7 +208,6 @@ fn draw_scratch_curve(
             let toff = (ti as f32 / steps_th.max(1) as f32 - 0.5) * thickness;
             let tx = bx + nx * toff;
             let ty = by + ny * toff;
-            // Жёсткие края: интенсивность падает только у самой границы (последние 15%)
             let rel = (toff.abs() / half).min(1.0);
             let edge_fade = if rel < 0.85 { 1.0 } else { 1.0 - (rel - 0.85) / 0.15 * 0.6 };
             let v = (intensity_t * edge_fade).min(1.0);
@@ -106,17 +221,18 @@ fn draw_scratch_curve(
     (ex, ey)
 }
 
-pub fn scratches_pattern(w: u32, h: u32, seed: u32, params: ScratchParams) -> GrayImage {
+pub fn scratches_pattern(
+    w: u32, h: u32, seed: u32, params: ScratchParams,
+    uv_mask: Option<&GrayImage>,
+) -> GrayImage {
     let mut img = GrayImage::new(w, h);
     let mut rng = StdRng::seed_from_u64(seed as u64);
     let wf = w as f32;
     let hf = h as f32;
 
-    // ── Плотность: density 0.1..1.0 → количество царапин 5..80 ──
-        let density = params.density.clamp(0.1, 1.0);
+    let density = params.density.clamp(0.1, 1.0);
     let base_count = (20.0 + density * 180.0) as u32;
 
-    // ── Кластеры: если clusters > 0 — царапины группируются в N областей ──
     let clusters = params.clusters.clamp(0.0, 1.0);
     let cluster_count = if clusters > 0.05 {
         (1.0 + clusters * 5.0) as u32
@@ -124,19 +240,11 @@ pub fn scratches_pattern(w: u32, h: u32, seed: u32, params: ScratchParams) -> Gr
         0
     };
 
-    // Длины: length 0.02..0.4 → пиксели 0.02*wf .. 0.4*wf
     let base_len = (params.length.clamp(0.02, 0.4) * wf).max(5.0);
-
-    // Толщина: thickness 0.5..6.0 → пиксели
     let base_thick = params.thickness.clamp(0.5, 6.0);
-
-    // Волнистость 0..1
     let waviness = params.waviness.clamp(0.0, 1.0);
-
-    // Ветвление 0..0.5
     let branches = params.branches.clamp(0.0, 0.5);
 
-    // ── Кластерные центры ──
     let cluster_centers: Vec<(f32, f32)> = (0..cluster_count)
         .map(|_| {
             let cx = rng.gen_range(0.0..wf);
@@ -146,41 +254,28 @@ pub fn scratches_pattern(w: u32, h: u32, seed: u32, params: ScratchParams) -> Gr
         .collect();
     let cluster_radius = wf.min(hf) * 0.25;
 
-    // ── Рисуем царапины ──
     for _ in 0..base_count {
         let (sx, sy) = if cluster_count > 0 && rng.gen::<f32>() < 0.7 {
-            // Внутри случайного кластера
             let (cx, cy) = cluster_centers[rng.gen_range(0..cluster_centers.len())];
             let a = rng.gen_range(0.0..std::f32::consts::TAU);
             let r = rng.gen_range(0.0..cluster_radius);
             (cx + a.cos() * r, cy + a.sin() * r)
         } else {
-            // Случайно по всей площади
             (rng.gen_range(0.0..wf), rng.gen_range(0.0..hf))
         };
 
-        // Угол: царапины преимущественно горизонтальные с шумом ±60°
         let base_angle = rng.gen_range(-std::f32::consts::FRAC_PI_2..std::f32::consts::FRAC_PI_2);
         let angle = base_angle + rng.gen_range(-0.5..0.5);
 
-        // Длина: length ± 70%
         let len = base_len * rng.gen_range(0.3..1.3);
-
-        // Толщина: thickness ± 40%
         let thick = base_thick * rng.gen_range(0.6..1.4);
-
-        // Яркость: 0.75..1.0 — царапины должны быть явными
         let intensity = rng.gen_range(0.75..1.0);
-
-        // Broken: 30% царапин с разрывами
         let broken = rng.gen::<f32>() < 0.3;
 
-        // Основная царапина
         let (ex, ey) = draw_scratch_curve(
             &mut img, &mut rng, (sx, sy), angle, len, thick, waviness, broken, intensity,
         );
 
-        // Ветвление
         if branches > 0.01 && rng.gen::<f32>() < branches * 2.0 {
             let branch_angle = angle + rng.gen_range(-0.8..0.8);
             let branch_len = len * rng.gen_range(0.3..0.7);
@@ -194,7 +289,6 @@ pub fn scratches_pattern(w: u32, h: u32, seed: u32, params: ScratchParams) -> Gr
         }
     }
 
-    // ═══ Position (posX, posY) — сдвиг финальной картинки ═══
     let px = params.pos_x * wf;
     let py = params.pos_y * hf;
     if px.abs() > 0.5 || py.abs() > 0.5 {
@@ -210,6 +304,10 @@ pub fn scratches_pattern(w: u32, h: u32, seed: u32, params: ScratchParams) -> Gr
             }
         }
         img.copy_from_slice(&shifted);
+    }
+
+    if let Some(uv) = uv_mask {
+        apply_uv_mask_gray(&mut img, uv);
     }
 
     img
@@ -290,6 +388,9 @@ fn sample_mask_clamped(mask: &RgbImage, u: f32, v: f32) -> f32 {
     sample_mask_bilinear(mask, u, v)
 }
 
+// sample_instance принимает уже пиксельные координаты (px, py) в диапазоне
+// [0, wf) x [0, hf). При triplanar-режиме сюда приходят координаты,
+// полученные из world-pos UV × wf/hf.
 #[inline]
 fn sample_instance(mask: &RgbImage, px: f32, py: f32, wf: f32, hf: f32, inst: &MaskInstance) -> f32 {
     let u = px / wf;
@@ -325,6 +426,9 @@ pub fn mask_pattern(
     p: MaskPatternParams,
     mask_pool: &[RgbImage],
     instances_in: &[MaskInstance],
+    uv_mask: Option<&GrayImage>,
+    world_pos: Option<&RgbImage>,
+    tri_scale: f32,
 ) -> MaskPatternMasks {
     let wf = w as f32;
     let hf = h as f32;
@@ -355,21 +459,52 @@ pub fn mask_pattern(
     let threshold = p.threshold.clamp(0.0, 1.0);
     let sharpness = p.sharpness.clamp(0.0, 1.0);
 
+    // Triplanar: ресайзим world_pos под нашу сетку, если нужно
+    let wp_owned;
+    let wp_ref: Option<&RgbImage> = if let Some(wp) = world_pos {
+        if wp.width() != w || wp.height() != h {
+            wp_owned = image::imageops::resize(wp, w, h, image::imageops::FilterType::Lanczos3);
+            Some(&wp_owned)
+        } else {
+            Some(wp)
+        }
+    } else {
+        wp_owned = RgbImage::new(0, 0);
+        None
+    };
+    let use_triplanar = wp_ref.is_some();
+
     let body_data: Vec<u8> = (0..h).into_par_iter().flat_map(|y| {
         let mut row = Vec::with_capacity(w as usize);
         for x in 0..w {
             let px = x as f32;
             let py = y as f32;
 
-            let (wx, wy) = if deform_amt > 0.01 {
+            let (wx, wy) = if let Some(wp) = wp_ref {
+                // ── TRIPLANAR ──
+                let wp_px = sample_world_pos(wp, x, y);
+                let nrm = normal_from_world_pos(wp, x, y);
+                let uv_tri = triplanar_uv(wp_px, nrm, tri_scale);
+                // uv_tri в диапазоне [0..scale], заворачиваем в [0..1], потом в пиксели
+                let u_t = uv_tri[0].rem_euclid(1.0);
+                let v_t = uv_tri[1].rem_euclid(1.0);
+                (u_t * wf, (1.0 - v_t) * hf)
+            } else {
+                (px, py)
+            };
+
+            let (dx, dy) = if deform_amt > 0.01 {
                 let u = px / wf;
                 let v = 1.0 - (py / hf);
                 let nx = snoise2(u * deform_freq, v * deform_freq);
                 let ny = snoise2(u * deform_freq + 100.0, v * deform_freq + 100.0);
-                (px + nx * warp_scale * deform_amt, py - ny * warp_scale * deform_amt)
+                (nx * warp_scale * deform_amt, -ny * warp_scale * deform_amt)
             } else {
-                (px, py)
+                (0.0, 0.0)
             };
+
+            let wx = wx + dx;
+            let wy = wy + dy;
 
             let mut best: f32 = 0.0;
             for inst in &instances {
@@ -387,8 +522,15 @@ pub fn mask_pattern(
         row
     }).collect();
 
+    // Отражаем по Y, чтобы совпасть с превью (flipY=true на альбедо в Three.js)
+    let mut flipped_data: Vec<u8> = Vec::with_capacity((w * h) as usize);
+    for y in (0..h).rev() {
+        let start = (y * w) as usize;
+        let end = start + w as usize;
+        flipped_data.extend_from_slice(&body_data[start..end]);
+    }
     let mut body = GrayImage::new(w, h);
-    body.copy_from_slice(&body_data);
+    body.copy_from_slice(&flipped_data);
 
     let core_data: Vec<u8> = (0..h).into_par_iter().flat_map(|y| {
         let mut row = Vec::with_capacity(w as usize);
@@ -437,10 +579,16 @@ pub fn mask_pattern(
     let mut height = GrayImage::new(w, h);
     height.copy_from_slice(&height_data);
 
+    if let Some(uv) = uv_mask {
+        apply_uv_mask_gray(&mut core, uv);
+        apply_uv_mask_gray(&mut body, uv);
+        apply_uv_mask_gray(&mut edge, uv);
+    }
+
     MaskPatternMasks { core, body, edge, height }
 }
 
-// ============ Streaks procedural (SDF-потёки) ============
+// ============ Streaks procedural ============
 
 #[derive(Debug, Clone, Copy)]
 pub struct StreaksProceduralParams {
@@ -498,11 +646,6 @@ fn sd_segment(px: f32, py: f32, ax: f32, ay: f32, bx: f32, by: f32) -> f32 {
     (dx * dx + dy * dy).sqrt()
 }
 
-/// Профиль «классический потёк»: голова → шейка → шлейф → хвост.
-/// t=0   → голова (head_r)
-/// t=0.15→ шейка (head_r * 0.55)
-/// t=0.85→ почти хвост (head_r * 0.48)
-/// t=1.0 → хвост (tail_r)
 #[inline]
 fn drip_radius(head_r: f32, tail_r: f32, t: f32) -> f32 {
     let t1 = 0.15_f32;
@@ -519,15 +662,17 @@ fn drip_radius(head_r: f32, tail_r: f32, t: f32) -> f32 {
     }
 }
 
-// Рабочий хэш — тот же, что в GLSL. БЕЗ seed.
 #[inline]
 fn hash2i_streaks(x: i32, y: i32) -> f32 {
-    let mut h = (x.wrapping_mul(374761393).wrapping_add(y.wrapping_mul(668265263))) as u32;
-    h = (h ^ (h >> 13)).wrapping_mul(1274126177);
+    let xu = x as u32;
+    let yu = y as u32;
+    let mut h = xu.wrapping_mul(374761393).wrapping_add(yu.wrapping_mul(668265263));
+    h = h.wrapping_mul(1274126177);
+    h = h ^ (h >> 13);
+    h = h.wrapping_mul(1274126177);
     ((h ^ (h >> 16)) & 0xFFFFFF) as f32 / 16777215.0
 }
 
-// Value noise — рабочий. БЕЗ seed.
 #[inline]
 fn value_noise_streaks(x: f32, y: f32) -> f32 {
     let x0 = x.floor() as i32;
@@ -547,11 +692,6 @@ fn value_noise_streaks(x: f32, y: f32) -> f32 {
     top * (1.0 - sy) + bot * sy
 }
 
-/// Профиль радиуса потёка по нормализованной высоте t.
-/// t = 0.0 (голова) → head_r
-/// t = 0.2         → head_r * 0.75 (шейка)
-/// t = 0.6         → head_r * 0.55 (середина)
-/// t = 1.0         → tail_r
 #[inline]
 fn drip_profile(head_r: f32, tail_r: f32, t: f32) -> f32 {
     let t = t.clamp(0.0, 1.0);
@@ -600,7 +740,12 @@ fn value_noise(u: f32, v: f32, grid: f32, seed: u32) -> f32 {
     top * (1.0 - sy) + bot * sy
 }
 
-pub fn streaks_procedural_pattern(w: u32, h: u32, var_seed: u32, p: StreaksProceduralParams) -> StreaksProceduralMasks {
+pub fn streaks_procedural_pattern(
+    w: u32, h: u32, var_seed: u32, p: StreaksProceduralParams,
+    uv_mask: Option<&GrayImage>,
+    world_pos: Option<&RgbImage>,
+    tri_scale: f32,
+) -> StreaksProceduralMasks {
     let wf = w as f32;
     let hf = h as f32;
 
@@ -616,45 +761,80 @@ pub fn streaks_procedural_pattern(w: u32, h: u32, var_seed: u32, p: StreaksProce
     let cos_r = (-rot_rad).cos();
     let sin_r = (-rot_rad).sin();
 
-    // ─── Per-variation модуляция (форма та же, узор другой) ───
     let vi = (var_seed % 1000) as f32 * 0.001;
 
-    // Частота: ±15%
     let freq_scale = (0.3 + (count / 100.0) * 2.7) * (0.85 + vi * 0.30);
     let base_freq = (1.0 / size.max(0.001)) * 0.5 * freq_scale;
     let octaves = (3.0 + (count / 25.0).min(5.0)) as u32;
-    // Порог: ±10%
     let thr_eff = threshold * 0.35 * (0.9 + vi * 0.2);
 
-    // Сдвиг UV: 0..10 единиц.
     let offx = ((var_seed % 100) as f32) * 0.1;
     let offy = (((var_seed / 100) % 100) as f32) * 0.1;
+
+    // Triplanar: ресайз world_pos под нашу сетку
+    let wp_owned;
+    let wp_ref: Option<&RgbImage> = if let Some(wp) = world_pos {
+        if wp.width() != w || wp.height() != h {
+            wp_owned = image::imageops::resize(wp, w, h, image::imageops::FilterType::Lanczos3);
+            Some(&wp_owned)
+        } else {
+            Some(wp)
+        }
+    } else {
+        wp_owned = RgbImage::new(0, 0);
+        None
+    };
+    let use_triplanar = wp_ref.is_some();
 
     let body_data: Vec<u8> = (0..h).into_par_iter().flat_map(|y| {
         let mut row = Vec::with_capacity(w as usize);
         for x in 0..w {
-            let mut u = (x as f32 + 0.5) / wf;
-            let mut v = 1.0 - (y as f32 + 0.5) / hf;
-
-            u -= p.pos_x;
-            v -= p.pos_y;
-
-            let cu = u - 0.5;
-            let cv = v - 0.5;
-            u = cu * cos_r - cv * sin_r + 0.5;
-            v = cu * sin_r + cv * cos_r + 0.5;
-
-            if tileable {
-                u = u.rem_euclid(1.0);
-                v = v.rem_euclid(1.0);
+            let (mut u, mut v) = if let Some(wp) = wp_ref {
+                // Triplanar UV
+                let wp_px = sample_world_pos(wp, x, y);
+                let nrm = normal_from_world_pos(wp, x, y);
+                let uv_tri = triplanar_uv(wp_px, nrm, tri_scale);
+                (uv_tri[0].rem_euclid(1.0), uv_tri[1].rem_euclid(1.0))
             } else {
-                if u < 0.0 || u > 1.0 || v < 0.0 || v > 1.0 {
+                let mut u = (x as f32 + 0.5) / wf;
+                let mut v = (y as f32 + 0.5) / hf;
+                u -= p.pos_x;
+                v -= p.pos_y;
+
+                let cu = u - 0.5;
+                let cv = v - 0.5;
+                u = cu * cos_r - cv * sin_r + 0.5;
+                v = cu * sin_r + cv * cos_r + 0.5;
+
+                if tileable {
+                    u = u.rem_euclid(1.0);
+                    v = v.rem_euclid(1.0);
+                } else if u < 0.0 || u > 1.0 || v < 0.0 || v > 1.0 {
                     row.push(0);
                     continue;
                 }
+                (u, v)
+            };
+
+            // pos/rotation только в fallback-режиме уже применены выше.
+            // В triplanar-режиме применяем pos как сдвиг UV.
+            if use_triplanar {
+                u -= p.pos_x;
+                v -= p.pos_y;
+
+                let cu = u - 0.5;
+                let cv = v - 0.5;
+                let ru = cu * cos_r - cv * sin_r;
+                let rv = cu * sin_r + cv * cos_r;
+                u = ru + 0.5;
+                v = rv + 0.5;
+
+                if tileable {
+                    u = u.rem_euclid(1.0);
+                    v = v.rem_euclid(1.0);
+                }
             }
 
-            // Растяжение по Y + сдвиг.
             let u_s = u + offx;
             let v_s = v / stretch + offy;
 
@@ -690,6 +870,10 @@ pub fn streaks_procedural_pattern(w: u32, h: u32, var_seed: u32, p: StreaksProce
     let mut height = GrayImage::new(w, h);
     height.copy_from_slice(&height_data);
 
+    if let Some(uv) = uv_mask {
+        apply_uv_mask_gray(&mut body, uv);
+    }
+
     StreaksProceduralMasks { body, height }
 }
 
@@ -713,8 +897,11 @@ pub fn dirt_pattern_from_masks(
     p: MaskPatternParams,
     mask_pool: &[RgbImage],
     instances: &[MaskInstance],
+    uv_mask: Option<&GrayImage>,
+    world_pos: Option<&RgbImage>,
+    tri_scale: f32,
 ) -> DirtMasks {
-    let m = mask_pattern(w, h, noise, p, mask_pool, instances);
+    let m = mask_pattern(w, h, noise, p, mask_pool, instances, uv_mask, world_pos, tri_scale);
     DirtMasks { flat: m.body, height: m.height }
 }
 
@@ -724,8 +911,11 @@ pub fn rust_pattern_from_masks(
     p: MaskPatternParams,
     mask_pool: &[RgbImage],
     instances: &[MaskInstance],
+    uv_mask: Option<&GrayImage>,
+    world_pos: Option<&RgbImage>,
+    tri_scale: f32,
 ) -> RustMasks {
-    let m = mask_pattern(w, h, noise, p, mask_pool, instances);
+    let m = mask_pattern(w, h, noise, p, mask_pool, instances, uv_mask, world_pos, tri_scale);
     RustMasks { core: m.core, body: m.body, edge: m.edge, height: m.height }
 }
 
@@ -778,5 +968,30 @@ mod tests {
     #[test]
     fn test_smoothstep() {
         assert!((smoothstep(0.0, 1.0, -0.5) - 0.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_streaks_body_debug() {
+        let w = 1024u32;
+        let h = 1024u32;
+        let p = StreaksProceduralParams {
+            count: 28.0,
+            size: 0.015,
+            stretch: 20.0,
+            threshold: 0.2,
+            sharpness: 0.6,
+            waviness: 0.0,
+            pos_x: 0.0,
+            pos_y: 0.0,
+            rotation: 0.0,
+            scale: 1.0,
+            tileable: true,
+        };
+        let var_seed = 756299604u32 + 1 * 7919;
+        let m = streaks_procedural_pattern(w, h, var_seed, p, None, None, 2.0);
+        for (x, y) in [(512u32, 512u32), (256, 512), (768, 512), (512, 256), (512, 768)] {
+            let px = m.body.get_pixel(x, y)[0];
+            println!("BODY {} {} -> {}", x, y, px);
+        }
     }
 }

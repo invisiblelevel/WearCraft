@@ -1,7 +1,7 @@
 // Загрузка вариаций сгенерированных PNG в Three.js-материал
 import * as THREE from 'three';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { viewer, pbr, ui, settings, showProgress, hideProgress } from './stores.svelte.js';
+import { viewer, pbr, ui, settings, params, showProgress, hideProgress } from './stores.svelte.js';
 import { applyPBR } from './pbr-loader.js';
 
 const cache = new Map();
@@ -67,6 +67,106 @@ function applyTiling(tex) {
   tex.needsUpdate = true;
 }
 
+// ═══ Обновление instances у ShaderMaterial для конкретной вариации ═══
+async function updateShaderInstances(mat, index) {
+  const { params: p, scratchParams, dirtParams, rustParams, streakParams, settings: s } = await import('./stores.svelte.js');
+  const { generateInstances, generateFixedInstance } = await import('./instances.js');
+  const { resolveMaskPaths } = await import('./mask-source.js');
+
+  const preset = p.preset;
+
+  const isRust = preset === 'rust';
+  const isDirt = preset === 'dirt';
+  const isStreaks = preset === 'streaks';
+  const isScratch = preset === 'scratches';
+
+  if (!isRust && !isDirt && !isStreaks && !isScratch) return;
+
+  if (isStreaks && streakParams.procedural) return;
+  if (isScratch && scratchParams.procedural) return;
+
+  let pr;
+  if (isRust) pr = rustParams;
+  else if (isDirt) pr = dirtParams;
+  else if (isStreaks) pr = streakParams;
+  else pr = scratchParams;
+
+  const count = Math.min(Math.round(pr.count || 3), 8);
+
+  let scale;
+  if (isStreaks) scale = streakParams.maskScale || 1;
+  else if (isScratch) scale = scratchParams.maskScale || 1;
+  else scale = pr.scale || 1;
+
+  let userMask;
+  if (isRust) userMask = s.userMaskRust;
+  else if (isStreaks) userMask = s.userMaskStreak;
+  else if (isScratch) userMask = s.userMaskScratch;
+  else userMask = s.userMaskDirt;
+
+  const varSeed = (p.seed + index * 7919) >>> 0;
+
+  let transforms;
+
+  if (userMask) {
+    if (index === 1) {
+      const pos = isRust ? s.userMaskRustPos
+                : isStreaks ? s.userMaskStreakPos
+                : isScratch ? s.userMaskScratchPos
+                : s.userMaskDirtPos;
+      transforms = [generateFixedInstance(pos)];
+    } else {
+      let useRandomRot = pr.randomRotation;
+      let globalRot = pr.rotation * Math.PI / 180;
+      if (isStreaks) {
+        useRandomRot = false;
+        globalRot = pr.randomRotation ? seedAngleLocal(varSeed) : pr.rotation * Math.PI / 180;
+      }
+      transforms = generateInstances(varSeed, count, scale, 1, {
+        globalPosX: pr.posX,
+        globalPosY: pr.posY,
+        globalRotation: globalRot,
+        randomRotation: useRandomRot,
+        randomFlip: isStreaks ? false : true,
+      });
+    }
+  } else {
+    const paths = await resolveMaskPaths(preset);
+    const maskCount = Math.max(1, paths.length);
+
+    let useRandomRot = pr.randomRotation;
+    let globalRot = pr.rotation * Math.PI / 180;
+    if (isStreaks) {
+      useRandomRot = false;
+      globalRot = pr.randomRotation ? seedAngleLocal(varSeed) : pr.rotation * Math.PI / 180;
+    }
+
+    transforms = generateInstances(varSeed, count, scale, maskCount, {
+      globalPosX: pr.posX,
+      globalPosY: pr.posY,
+      globalRotation: globalRot,
+      randomRotation: useRandomRot,
+      randomFlip: isStreaks ? false : true,
+      tileable: !pr.disableTiling,
+    });
+  }
+
+  const instanceCount = Math.min(transforms.length, 8);
+  for (let i = 0; i < 8; i++) {
+    const it = transforms[i] || { offsetX: 0, offsetY: 0, scale: 1, rotation: 0, flipX: 1, flipY: 1, tileable: true };
+    mat.uniforms.uInstA.value[i].set(it.offsetX, it.offsetY, it.scale, it.rotation);
+    mat.uniforms.uInstB.value[i].set(it.flipX, it.flipY, (it.tileable === false) ? 0.0 : 1.0, 0);
+  }
+  mat.uniforms.uInstanceCount.value = instanceCount;
+}
+
+// Локальная копия seedAngle (чтобы не тянуть из Preview3D)
+function seedAngleLocal(varSeed) {
+  let s = varSeed >>> 0;
+  s = (s * 1664525 + 1013904223) >>> 0;
+  return ((s & 0xFFFFFF) / 16777216) * Math.PI * 2;
+}
+
 export async function loadVariation(index) {
   if (index === 0) {
     applyPBR();
@@ -82,7 +182,6 @@ export async function loadVariation(index) {
     const sep = folder.includes('\\') ? '\\' : '/';
     const p = (name) => `${folder}${sep}${name}`;
 
-    // Грузим только те карты, которые были в исходном сете
     const hasAlbedo    = !!pbr.textures.albedo;
     const hasNormal    = !!pbr.textures.normal;
     const hasRoughness = !!pbr.textures.roughness;
@@ -112,7 +211,7 @@ export async function loadVariation(index) {
         target.material = mat;
       }
 
-      // ═══ ShaderMaterial (rust/dirt) — обновляем uniforms ═══
+      // ═══ ShaderMaterial (rust/dirt/streaks/scratches) — обновляем uniforms ═══
       if (mat.uniforms && mat.uniforms.uAlbedoTex) {
         if (mat.uniforms.uAlbedoTex) {
           mat.uniforms.uAlbedoTex.value = albedo;
@@ -126,7 +225,18 @@ export async function loadVariation(index) {
           mat.uniforms.uRoughTex.value = roughness;
           mat.uniforms.uHasRough.value = !!roughness;
         }
-        continue;  // ← пропускаем MeshStandard логику
+
+        // Procedural streaks — обновляем seed вариации (полный varSeed, не % 1000)
+        if (mat.uniforms.uSeed && mat.uniforms.uProcedural && mat.uniforms.uProcedural.value === true) {
+          const varSeed = (params.seed + index * 7919) >>> 0;
+          mat.uniforms.uSeed.value = varSeed;
+        }
+
+        // Instances для не-procedural (dirt/rust/streaks-mask/scratches-mask)
+        await updateShaderInstances(mat, index);
+
+        mat.needsUpdate = true;
+        continue;
       }
 
       if (pbr.showEdgeMode && edge) {

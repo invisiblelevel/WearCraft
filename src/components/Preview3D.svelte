@@ -1,6 +1,7 @@
 ﻿<script>
   import { onMount, onDestroy } from 'svelte';
   import * as THREE from 'three';
+  import { convertFileSrc } from '@tauri-apps/api/core';
   import {
     Circle, Square, Cylinder, Torus, ChevronLeft, ChevronRight, Loader2, X,
     Move3d, RotateCcw, Dices
@@ -12,6 +13,8 @@
     decalParams,
     settings,
     isGeoLimitSupported,
+    isUvMaskSupported,
+    isWorldPosSupported,
     pushLog, pushToast
   } from '../lib/stores.svelte.js';
   import { applyPBR } from '../lib/pbr-loader.js';
@@ -35,6 +38,8 @@
   import { resolveMaskPaths, maskPathsKey } from '../lib/mask-source.js';
   import { applyEnvironment, preloadRest } from '../lib/environments.js';
   import { bakeGeoNormal, saveGeoNormalToFile } from '../lib/geo-normal-bake.js';
+  import { bakeUvMask, saveUvMaskToFile } from '../lib/uv-mask-bake.js';
+  import { bakeWorldPos, saveWorldPosToFile } from '../lib/world-pos-bake.js';
 
   function seedAngle(varSeed) {
     let s = varSeed >>> 0;
@@ -176,6 +181,8 @@
     animate();
 
     queueMicrotask(() => bakeGeoNormalForCurrentModel());
+    queueMicrotask(() => bakeUvMaskForCurrentModel());
+    queueMicrotask(() => bakeWorldPosForCurrentModel());
 
     try {
       await applyEnvironment(
@@ -210,6 +217,8 @@
     mesh.geometry = createGeometry(kind);
     oldGeo.dispose();
     queueMicrotask(() => bakeGeoNormalForCurrentModel());
+    queueMicrotask(() => bakeUvMaskForCurrentModel());
+    queueMicrotask(() => bakeWorldPosForCurrentModel());
   }
 
   function resetModel() {
@@ -229,6 +238,8 @@
     pushLog('Модель сброшена');
     pushToast('Модель сброшена', 'info');
     queueMicrotask(() => bakeGeoNormalForCurrentModel());
+    queueMicrotask(() => bakeUvMaskForCurrentModel());
+    queueMicrotask(() => bakeWorldPosForCurrentModel());
   }
 
   function disposeModel(obj) {
@@ -250,7 +261,6 @@
   async function bakeGeoNormalForCurrentModel() {
     if (geoNormalBusy) return;
 
-    // Куб, цилиндр, торус — geo-limit не поддерживается
     if (!viewer.loadedModel && !isGeoLimitSupported()) {
       ui.geoNormalReady = false;
       ui.geoNormalPath = '';
@@ -311,6 +321,173 @@
     }
   }
 
+  // ═══ UV-MASK BAKE ═══
+  let uvMaskBusy = false;
+  let lastUvMaskKey = '';
+
+  async function bakeUvMaskForCurrentModel() {
+    if (uvMaskBusy) return;
+
+    if (!isUvMaskSupported()) {
+      ui.uvMaskReady = false;
+      ui.uvMaskPath = '';
+      return;
+    }
+
+    const target = viewer.loadedModel;
+    if (!target) {
+      ui.uvMaskReady = false;
+      return;
+    }
+
+    let triCount = 0;
+    target.traverse((c) => {
+      if (c.isMesh && c.geometry?.index) triCount += c.geometry.index.count / 3;
+      else if (c.isMesh && c.geometry?.attributes?.position) triCount += c.geometry.attributes.position.count / 3;
+    });
+    const key = `model_uv_${triCount}`;
+
+    if (key === lastUvMaskKey && ui.uvMaskReady) return;
+
+    uvMaskBusy = true;
+    try {
+      let hasUV = false;
+      target.traverse((c) => {
+        if (c.isMesh && c.geometry?.attributes?.uv) hasUV = true;
+      });
+
+      if (!hasUV) {
+        pushLog('[UvMask] Модель без UV');
+        ui.uvMaskReady = false;
+        ui.uvMaskPath = '';
+        return;
+      }
+
+      pushLog('[UvMask] Запекание...');
+      const res = bakeUvMask(target, 1024, 1024);
+      if (!res) {
+        pushLog('[UvMask] Не удалось запечь');
+        ui.uvMaskReady = false;
+        return;
+      }
+
+      const path = await saveUvMaskToFile(res.canvas, 'uv_mask.png');
+      ui.uvMaskPath = path;
+      ui.uvMaskReady = true;
+      ui.uvMaskTick = (ui.uvMaskTick || 0) + 1;
+      lastUvMaskKey = key;
+      pushLog(`[UvMask] Готово: ${path}`);
+    } catch (e) {
+      console.error('[UvMask] Ошибка:', e);
+      pushLog(`[UvMask] Ошибка: ${e}`);
+      ui.uvMaskReady = false;
+    } finally {
+      uvMaskBusy = false;
+    }
+  }
+
+  // ═══ WORLD-POS BAKE ═══
+  let worldPosBusy = false;
+  let lastWorldPosKey = '';
+
+  async function bakeWorldPosForCurrentModel() {
+    if (worldPosBusy) return;
+
+    if (!isWorldPosSupported()) {
+      ui.worldPosReady = false;
+      ui.worldPosPath = '';
+      return;
+    }
+
+    const target = viewer.loadedModel;
+    if (!target) {
+      ui.worldPosReady = false;
+      return;
+    }
+
+    let triCount = 0;
+    target.traverse((c) => {
+      if (c.isMesh && c.geometry?.index) triCount += c.geometry.index.count / 3;
+      else if (c.isMesh && c.geometry?.attributes?.position) triCount += c.geometry.attributes.position.count / 3;
+    });
+    const key = `model_wp_${triCount}`;
+
+    if (key === lastWorldPosKey && ui.worldPosReady) return;
+
+    worldPosBusy = true;
+    try {
+      let hasUV = false;
+      target.traverse((c) => {
+        if (c.isMesh && c.geometry?.attributes?.uv) hasUV = true;
+      });
+
+      if (!hasUV) {
+        pushLog('[WorldPos] Модель без UV');
+        ui.worldPosReady = false;
+        ui.worldPosPath = '';
+        return;
+      }
+
+      pushLog('[WorldPos] Запекание...');
+      const res = bakeWorldPos(target, 1024, 1024);
+      if (!res) {
+        pushLog('[WorldPos] Не удалось запечь');
+        ui.worldPosReady = false;
+        return;
+      }
+
+      const path = await saveWorldPosToFile(res.canvas, 'world_pos.png');
+      ui.worldPosPath = path;
+      ui.worldPosReady = true;
+      ui.worldPosTick = (ui.worldPosTick || 0) + 1;
+      ui.worldPosBounds = res.bounds;
+      lastWorldPosKey = key;
+      pushLog(`[WorldPos] Готово: ${path} bounds=[${res.bounds.min.map(v=>v.toFixed(2))}]..[${res.bounds.max.map(v=>v.toFixed(2))}]`);
+    } catch (e) {
+      console.error('[WorldPos] Ошибка:', e);
+      pushLog(`[WorldPos] Ошибка: ${e}`);
+      ui.worldPosReady = false;
+    } finally {
+      worldPosBusy = false;
+    }
+  }
+
+  // ═══ UV-маска как THREE.Texture ═══
+  let uvMaskTexture = null;
+  let uvMaskTexturePath = '';
+
+  async function getUvMaskTexture() {
+    if (!ui.uvMaskReady || !ui.uvMaskPath) return null;
+    if (uvMaskTexturePath === ui.uvMaskPath && uvMaskTexture) return uvMaskTexture;
+
+    if (uvMaskTexture) {
+      uvMaskTexture.dispose();
+      uvMaskTexture = null;
+    }
+
+    try {
+      const tex = await new Promise((resolve, reject) => {
+        const loader = new THREE.TextureLoader();
+        const src = convertFileSrc(ui.uvMaskPath) + '?t=' + Date.now();
+        loader.load(src, resolve, undefined, reject);
+      });
+      tex.flipY = false;
+      tex.colorSpace = THREE.NoColorSpace;
+      tex.wrapS = THREE.ClampToEdgeWrapping;
+      tex.wrapT = THREE.ClampToEdgeWrapping;
+      tex.minFilter = THREE.LinearFilter;
+      tex.magFilter = THREE.LinearFilter;
+      tex.needsUpdate = true;
+      uvMaskTexture = tex;
+      uvMaskTexturePath = ui.uvMaskPath;
+      ui.uvMaskTexture = tex;
+      return tex;
+    } catch (e) {
+      console.error('[UvMask] Не удалось загрузить текстуру:', e);
+      return null;
+    }
+  }
+
   function updateCamera() {
     camera.position.set(
       Math.sin(rotY) * Math.cos(rotX) * camDist,
@@ -336,6 +513,10 @@
   function cleanupThree() {
     cancelAnimationFrame(raf);
     if (canvasEl && canvasEl._ro) canvasEl._ro.disconnect();
+    if (uvMaskTexture) {
+      uvMaskTexture.dispose();
+      uvMaskTexture = null;
+    }
     if (renderer) {
       renderer.dispose();
       if (renderer.domElement.parentNode) renderer.domElement.parentNode.removeChild(renderer.domElement);
@@ -387,8 +568,13 @@
     pbr.showEdgeMode; pbr.repeatX; pbr.repeatY; pbr.rotation;
     const v = ui.currentVariation;
     if (!renderer) return;
+
+    if (v > 0) {
+      removeMaskPreview();
+    }
+
     if (v === 0 && params.preset === 'custom') applyPBR();
-    if (maskParams.enabled && pbr.textures?.albedo) {
+    if (v === 0 && params.preset === 'custom' && maskParams.enabled && pbr.textures?.albedo) {
       queueMicrotask(() => applyMaskPreview(scene));
     }
   });
@@ -412,6 +598,7 @@
     maskParams.kind;
 
     if (!renderer) return;
+    if (params.preset !== 'custom') return;
     if (!maskParams.enabled) return;
     if (ui.currentVariation !== 0) return;
     if (!pbr.textures?.albedo) return;
@@ -427,6 +614,7 @@
   $effect(() => {
     const path = maskParams.path;
     if (!renderer) return;
+    if (params.preset !== 'custom') return;
     if (!path) return;
     if (!maskParams.enabled) return;
     if (ui.currentVariation !== 0) return;
@@ -464,6 +652,12 @@
   async function applyShaderMaterial() {
     if (ui.currentVariation !== 0) return;
 
+    // Procedural streaks — без real-time превью (см. scratches procedural)
+    if (params.preset === 'streaks' && streakParams.procedural) {
+      pushLog('[Preview] Streaks procedural — превью недоступно, смотри после Generate');
+      return;
+    }
+
     const targets = getActiveMeshes();
     if (targets.length === 0) return;
 
@@ -471,6 +665,7 @@
     if (preset !== 'rust' && preset !== 'dirt' && preset !== 'streaks' && preset !== 'scratches') return;
 
     if (preset === 'scratches' && scratchParams.procedural) return;
+    if (preset === 'streaks' && streakParams.procedural) return;
 
     const streaksProcedural = (preset === 'streaks' && streakParams.procedural);
 
@@ -554,6 +749,15 @@
       }
     }
 
+    // UV-маска
+    const uvMaskTex = await getUvMaskTexture();
+
+    // Triplanar
+    const triEnabled = isWorldPosSupported() && ui.worldPosReady;
+    const triScale = 2.0;
+    const modelMin = ui.worldPosBounds?.min ?? [-0.5, -0.5, -0.5];
+    const modelMax = ui.worldPosBounds?.max ?? [0.5, 0.5, 0.5];
+
     if (preset === 'rust') {
       updateRustUniforms(shaderMaterial, {
         masks: loadedMaskTextures,
@@ -569,6 +773,9 @@
         albedoTex:  pbr.textures.albedo || null,
         normalTex:  pbr.textures.normal || null,
         roughTex:   pbr.textures.roughness || null,
+        uvMask:     uvMaskTex,
+        triplanarEnabled: triEnabled,
+        modelMin, modelMax, triScale,
       });
     } else if (preset === 'streaks') {
       updateStreaksUniforms(shaderMaterial, {
@@ -586,7 +793,7 @@
         posX:      streakParams.posX,
         posY:      streakParams.posY,
         rotation:  streakParams.rotation,
-        seed:      params.seed || 1,
+        seed:      ((params.seed + 1 * 7919) >>> 0),
         disableTiling: streakParams.disableTiling,
         masks:     loadedMaskTextures,
         transforms,
@@ -597,6 +804,9 @@
         albedoTex:  pbr.textures.albedo || null,
         normalTex:  pbr.textures.normal || null,
         roughTex:   pbr.textures.roughness || null,
+        uvMask:     uvMaskTex,
+        triplanarEnabled: triEnabled,
+        modelMin, modelMax, triScale,
       });
     } else if (preset === 'scratches') {
       updateScratchesUniforms(shaderMaterial, {
@@ -614,6 +824,9 @@
         albedoTex:  pbr.textures.albedo || null,
         normalTex:  pbr.textures.normal || null,
         roughTex:   pbr.textures.roughness || null,
+        uvMask:     uvMaskTex,
+        triplanarEnabled: triEnabled,
+        modelMin, modelMax, triScale,
       });
     } else {
       updateDirtUniforms(shaderMaterial, {
@@ -631,10 +844,12 @@
         albedoTex:  pbr.textures.albedo || null,
         normalTex:  pbr.textures.normal || null,
         roughTex:   pbr.textures.roughness || null,
+        uvMask:     uvMaskTex,
+        triplanarEnabled: triEnabled,
+        modelMin, modelMax, triScale,
       });
     }
 
-    // ═══ GEO LIMIT ═══
     const geoOk = isGeoLimitSupported();
     const modeNum = { sides: 0, top: 1, bottom: 2, top_bottom: 3 }[ui.geometryLimitMode] ?? 0;
 
@@ -848,6 +1063,38 @@
     ui.geoNormalPath;
     viewer.shape;
     viewer.loadedModel;
+
+    if (!renderer) return;
+    if (ui.currentVariation !== 0) return;
+
+    const preset = params.preset;
+    if (preset !== 'rust' && preset !== 'dirt' && preset !== 'streaks' && preset !== 'scratches') return;
+    if (!shaderMaterial) return;
+
+    queueMicrotask(() => applyShaderMaterial());
+  });
+
+  $effect(() => {
+    ui.uvMaskReady;
+    ui.uvMaskPath;
+    viewer.loadedModel;
+    viewer.shape;
+
+    if (!renderer) return;
+    if (ui.currentVariation !== 0) return;
+
+    const preset = params.preset;
+    if (preset !== 'rust' && preset !== 'dirt' && preset !== 'streaks' && preset !== 'scratches') return;
+    if (!shaderMaterial) return;
+
+    queueMicrotask(() => applyShaderMaterial());
+  });
+
+  $effect(() => {
+    ui.worldPosReady;
+    ui.worldPosPath;
+    viewer.loadedModel;
+    viewer.shape;
 
     if (!renderer) return;
     if (ui.currentVariation !== 0) return;

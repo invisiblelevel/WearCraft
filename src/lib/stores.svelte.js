@@ -556,6 +556,17 @@ export const ui = $state({
   geoNormalTick: 0,
   geoNormalTexture: null,
 
+  uvMaskPath: '',
+  uvMaskReady: false,
+  uvMaskTick: 0,
+  uvMaskTexture: null,
+
+  worldPosPath: '',
+  worldPosReady: false,
+  worldPosTick: 0,
+  worldPosTexture: null,
+  worldPosBounds: { min: [-0.5, -0.5, -0.5], max: [0.5, 0.5, 0.5] },
+
   geometryLimitEnabled: false,
   geometryLimitMode: 'sides',
   geometryLimitSoftness: 0.5,
@@ -741,6 +752,18 @@ export function isGeoLimitSupported() {
   if (viewer.loadedModel) return true;
   const shape = viewer.shape;
   return shape !== 'cube' && shape !== 'cylinder' && shape !== 'torus';
+}
+
+// ═══ UV-острова: только для загруженной модели ═══
+// У примитивов (сфера, куб, цилиндр, торус) UV полная — обрезать нечего.
+export function isUvMaskSupported() {
+  return !!viewer.loadedModel;
+}
+
+// ═══ World-position: только для загруженной модели ═══
+// Для примитивов bbox известен и triplanar не имеет смысла.
+export function isWorldPosSupported() {
+  return !!viewer.loadedModel;
 }
 
 // Decal — рандом позиции и поворота

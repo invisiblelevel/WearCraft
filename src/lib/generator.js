@@ -117,6 +117,10 @@ export async function generateWear() {
   showProgress('Генерация вариаций...', 0);
   pushLog(`[Generate] Запуск: пресет=${params.preset}, ${params.variations} вариаций, seed=${params.seed}`);
 
+  // ═══ Чистим старый кэш ДО новой генерации ═══
+  clearVariationCache();
+  ui.generated = [];
+
   const instancesPerVariation = await buildInstancesPerVariation();
 
   const unlisten = await listen('wear_progress', (event) => {
@@ -146,7 +150,6 @@ export async function generateWear() {
 
         instancesPerVariation,
 
-        // Scratches
         scratchProcedural: scratchParams.procedural,
         scratchDensity:    scratchParams.density,
         scratchLength:     scratchParams.length,
@@ -175,7 +178,6 @@ export async function generateWear() {
         userMaskScratch:   settings.userMaskScratch || null,
         folderMaskNamesScratch: settings.folderMaskNamesScratch || [],
 
-        // Dirt
         dirtCount:      dirtParams.count,
         dirtScale:      dirtParams.scale,
         dirtDeform:     dirtParams.deform,
@@ -188,7 +190,6 @@ export async function generateWear() {
         userMaskDirt:   settings.userMaskDirt || null,
         folderMaskNamesDirt: settings.folderMaskNamesDirt || [],
 
-        // Rust
         rustCount:      rustParams.count,
         rustScale:      rustParams.scale,
         rustDeform:     rustParams.deform,
@@ -200,7 +201,6 @@ export async function generateWear() {
         userMaskRust:   settings.userMaskRust || null,
         folderMaskNamesRust: settings.folderMaskNamesRust || [],
 
-        // Streaks
         streakProcedural: streakParams.procedural,
         streakCount:      streakParams.count,
         streakThreshold:  streakParams.threshold,
@@ -222,7 +222,6 @@ export async function generateWear() {
         userMaskStreak:   settings.userMaskStreak || null,
         folderMaskNamesStreak: settings.folderMaskNamesStreak || [],
 
-        // Custom mask
         maskEnabled:         maskParams.enabled,
         maskPath:            maskParams.path || null,
         maskKind:            maskParams.kind,
@@ -236,7 +235,6 @@ export async function generateWear() {
         maskAffectRoughness: maskParams.affectRoughness,
         maskAffectNormal:    maskParams.affectNormal,
 
-        // Decal
         decalPath:            decalParams.path || null,
         decalHeightPath:      decalParams.heightPath || null,
         decalPosX:            decalParams.posX,
@@ -253,17 +251,22 @@ export async function generateWear() {
         decalRandomRotation:  decalParams.randomRotation,
         decalTileEdge:        decalParams.tileEdge,
 
-        // Geo-normal (ограничение по геометрии)
         geoNormalPath:        ui.geoNormalReady ? ui.geoNormalPath : null,
         geoLimitEnabled:      ui.geometryLimitEnabled,
         geoLimitMode:         ui.geometryLimitMode,
         geoLimitSoftness:     ui.geometryLimitSoftness,
         geoLimitInvert:       ui.geometryLimitInvert,
+
+        uvMaskPath:           ui.uvMaskReady ? ui.uvMaskPath : null,
+
+        // Triplanar
+        worldPosPath:         ui.worldPosReady ? ui.worldPosPath : null,
+        worldPosMin:          ui.worldPosBounds?.min ?? null,
+        worldPosMax:          ui.worldPosBounds?.max ?? null,
       }
     });
 
     ui.generationTick++;
-    clearVariationCache();
     ui.generated = result.variations;
     ui.currentVariation = 1;
     await loadVariation(1);

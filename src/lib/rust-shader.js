@@ -1,5 +1,8 @@
 // Шейдер для превью Rust. Instances передаются снаружи (см. instances.js).
 // + Ограничение по геометрии через vNormal.
+// + UV-острова через uUvMask.
+// + Triplanar projection через vWorldPos.
+// Volume: объёмная ржавчина (выпуклая/вдавленная).
 import * as THREE from 'three';
 
 export const MAX_MASKS = 8;
@@ -64,6 +67,15 @@ const FRAG = /* glsl */`
   uniform float uGeoLimitSoftness;
   uniform bool uGeoLimitInvert;
 
+  uniform sampler2D uUvMask;
+  uniform bool uUvMaskEnabled;
+
+  // ─── Triplanar ───
+  uniform bool uTriplanarEnabled;
+  uniform vec3 uModelMin;
+  uniform vec3 uModelMax;
+  uniform float uTriScale;
+
   vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
   vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
   vec3 permute(vec3 x) { return mod289(((x*34.0)+1.0)*x); }
@@ -90,6 +102,30 @@ const FRAG = /* glsl */`
     g.x = a0.x * x0.x + h.x * x0.y;
     g.yz = a0.yz * x12.xz + h.yz * x12.yw;
     return 130.0 * dot(m, g);
+  }
+
+  vec2 triplanarUV(vec3 worldPos, vec3 nrm, float scale) {
+    vec3 p = worldPos * scale;
+    vec3 n = normalize(nrm);
+    vec3 w = vec3(abs(n.x), abs(n.y), abs(n.z));
+    w = w * w * w * w;
+    float sum = max(w.x + w.y + w.z, 1e-6);
+    w /= sum;
+
+    vec2 uv_x = p.yz;
+    vec2 uv_y = p.xz;
+    vec2 uv_z = p.xy;
+
+    return uv_x * w.x + uv_y * w.y + uv_z * w.z;
+  }
+
+  vec2 triplanarMaskUV(vec2 triUV, vec2 repeat, float rotation) {
+    vec2 t = triUV - 0.5;
+    float cs = cos(-rotation);
+    float sn = sin(-rotation);
+    t = vec2(t.x * cs - t.y * sn, t.x * sn + t.y * cs);
+    t = t * repeat + 0.5;
+    return t;
   }
 
   vec4 pickMask(int i, vec2 uv) {
@@ -152,10 +188,19 @@ const FRAG = /* glsl */`
 
     vec2 uv = tiledUv;
 
-    vec2 warpedUv = uv;
+    vec2 maskUv;
+    if (uTriplanarEnabled) {
+      vec3 p = (vWorldPos - uModelMin) / max(uModelMax - uModelMin, vec3(1e-6));
+      vec2 tri = triplanarUV(p, vNormal, uTriScale);
+      maskUv = triplanarMaskUV(tri, uRepeat, uRotation);
+    } else {
+      maskUv = uv;
+    }
+
+    vec2 warpedUv = maskUv;
     if (uDeform > 0.01) {
-      float nx = snoise2(uv * 3.0);
-      float ny = snoise2(uv * 3.0 + vec2(100.0, 100.0));
+      float nx = snoise2(maskUv * 3.0);
+      float ny = snoise2(maskUv * 3.0 + vec2(100.0, 100.0));
       warpedUv += vec2(nx, ny) * 0.1 * uDeform;
     }
 
@@ -169,23 +214,31 @@ const FRAG = /* glsl */`
     float shifted = clamp(best - uThreshold * 0.5, 0.0, 1.0);
     float window = 0.5 - uSharpness * 0.4;
     float body = smoothstep(0.5 - window * 0.5, 0.5 + window * 0.5, shifted);
+    float core = smoothstep(0.7, 0.95, shifted);
 
     float gf = geoFactor();
     body *= gf;
+    core *= gf;
 
-    float core = smoothstep(0.7, 0.95, body);
-    float edge = smoothstep(0.0, 0.5, body - 0.3) * (1.0 - smoothstep(0.7, 0.95, body));
-
-    vec3 colCore = vec3(70.0, 35.0, 15.0) / 255.0;
-    vec3 colBody = vec3(150.0, 75.0, 30.0) / 255.0;
-    vec3 colEdge = vec3(205.0, 130.0, 65.0) / 255.0;
+    float uv_m = 1.0;
+    if (uUvMaskEnabled) {
+      uv_m = texture2D(uUvMask, uv).r;
+      body *= uv_m;
+      core *= uv_m;
+    }
 
     vec3 albedo = vec3(0.6, 0.6, 0.6);
     if (uHasAlbedo) albedo = texture2D(uAlbedoTex, uv).rgb;
 
-    albedo = mix(albedo, colEdge, edge * uAmount * 0.55);
-    albedo = mix(albedo, colBody, body * uAmount);
-    albedo = mix(albedo, colCore, core * uAmount * 0.9);
+    vec3 color_body = vec3(150.0/255.0, 75.0/255.0, 30.0/255.0);
+    vec3 color_core = vec3(70.0/255.0,  35.0/255.0, 15.0/255.0);
+    vec3 color_edge = vec3(205.0/255.0, 130.0/255.0, 65.0/255.0);
+
+    albedo = mix(albedo, color_body, body * uAmount);
+    albedo = mix(albedo, color_core, core * uAmount * 0.9);
+
+    float rim = clamp(body - core, 0.0, 1.0);
+    albedo = mix(albedo, color_edge, rim * uAmount * 0.55);
 
     vec3 nrm = normalize(vNormal);
     if (uHasNormal) {
@@ -205,6 +258,10 @@ const FRAG = /* glsl */`
       }
       float gx = (bx1 - bx2) * 8.0 * uVolume * gf;
       float gy = (by1 - by2) * 8.0 * uVolume * gf;
+      if (uUvMaskEnabled) {
+        gx *= uv_m;
+        gy *= uv_m;
+      }
       vec3 tangent = normalize(cross(nrm, vec3(0.0, 0.0, 1.0)) + vec3(1e-5));
       vec3 bitangent = cross(nrm, tangent);
       nrm = normalize(nrm - tangent * gx - bitangent * gy);
@@ -220,9 +277,7 @@ const FRAG = /* glsl */`
 
     float rough = 0.7;
     if (uHasRough) rough = texture2D(uRoughTex, uv).r;
-
-    float roughBoost = body * uAmount * 0.5 + core * uAmount * 0.35;
-    rough = clamp(rough + roughBoost, 0.0, 1.0);
+    rough = clamp(rough + body * uAmount * 0.5, 0.0, 1.0);
 
     vec3 ambient = vec3(0.15);
     vec3 color = ambient * albedo + albedo * diff * 1.2 + vec3(spec) * (1.0 - rough);
@@ -268,6 +323,14 @@ export function createRustMaterial(albedoTex, normalTex, roughTex) {
     uGeoLimitMode:     { value: 0 },
     uGeoLimitSoftness: { value: 0.5 },
     uGeoLimitInvert:   { value: false },
+
+    uUvMask:        { value: null },
+    uUvMaskEnabled: { value: false },
+
+    uTriplanarEnabled: { value: false },
+    uModelMin:         { value: new THREE.Vector3(-0.5, -0.5, -0.5) },
+    uModelMax:         { value: new THREE.Vector3(0.5, 0.5, 0.5) },
+    uTriScale:         { value: 2.0 },
   };
 
   return new THREE.ShaderMaterial({
@@ -329,4 +392,14 @@ export function updateRustUniforms(material, opts) {
   if (opts.geoLimitMode !== undefined) u.uGeoLimitMode.value = opts.geoLimitMode;
   if (opts.geoLimitSoftness !== undefined) u.uGeoLimitSoftness.value = opts.geoLimitSoftness;
   if (opts.geoLimitInvert !== undefined) u.uGeoLimitInvert.value = !!opts.geoLimitInvert;
+
+  if (opts.uvMask !== undefined) {
+    u.uUvMask.value = opts.uvMask;
+    u.uUvMaskEnabled.value = !!opts.uvMask;
+  }
+
+  if (opts.triplanarEnabled !== undefined) u.uTriplanarEnabled.value = !!opts.triplanarEnabled;
+  if (opts.modelMin) u.uModelMin.value.set(opts.modelMin[0], opts.modelMin[1], opts.modelMin[2]);
+  if (opts.modelMax) u.uModelMax.value.set(opts.modelMax[0], opts.modelMax[1], opts.modelMax[2]);
+  if (opts.triScale !== undefined) u.uTriScale.value = opts.triScale;
 }

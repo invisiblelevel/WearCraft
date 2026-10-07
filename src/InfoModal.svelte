@@ -42,8 +42,8 @@
         <h2>{t('info.version.title')}</h2>
         <table class="kv">
           <tbody>
-            <tr><td>{t('info.version.app')}</td>      <td>WearCraft v1.1.1</td></tr>
-            <tr><td>{t('info.version.date')}</td>     <td>2026-10-06</td></tr>
+            <tr><td>{t('info.version.app')}</td>      <td>WearCraft v1.2.0</td></tr>
+            <tr><td>{t('info.version.date')}</td>     <td>2026-10-08</td></tr>
             <tr><td>{t('info.version.author')}</td>   <td>INV.LVL</td></tr>
             <tr><td>{t('info.version.stack')}</td>    <td>Tauri + Svelte + Three.js</td></tr>
             <tr><td>{t('info.version.license')}</td>  <td>MIT</td></tr>

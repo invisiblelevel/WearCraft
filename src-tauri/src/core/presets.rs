@@ -98,6 +98,10 @@ pub struct Preset {
         &LoadedPbr, &TilingNoise, f32,
         &ScratchParamsFromUI, &DirtParamsFromUI, &RustParamsFromUI, &StreakParamsFromUI,
         &[RgbImage], &[MaskInstance],
+        Option<&GrayImage>,
+        Option<&RgbImage>,
+        [f32; 3],
+        [f32; 3],
     ) -> LoadedPbr,
 }
 
@@ -112,11 +116,14 @@ pub fn get_all() -> Vec<Preset> {
     ]
 }
 
-/// Decal не вызывается через preset.apply — обрабатывается отдельно в wear.rs.
 fn apply_decal_stub(
     set: &LoadedPbr, _noise: &TilingNoise, _amount: f32,
     _sp: &ScratchParamsFromUI, _dp: &DirtParamsFromUI, _rp: &RustParamsFromUI, _stp: &StreakParamsFromUI,
     _masks: &[RgbImage], _instances: &[MaskInstance],
+    _uv_mask: Option<&GrayImage>,
+    _world_pos: Option<&RgbImage>,
+    _wp_min: [f32; 3],
+    _wp_max: [f32; 3],
 ) -> LoadedPbr {
     set.clone()
 }
@@ -131,6 +138,10 @@ fn apply_custom(
     set: &LoadedPbr, _noise: &TilingNoise, _amount: f32,
     _sp: &ScratchParamsFromUI, _dp: &DirtParamsFromUI, _rp: &RustParamsFromUI, _stp: &StreakParamsFromUI,
     _masks: &[RgbImage], _instances: &[MaskInstance],
+    _uv_mask: Option<&GrayImage>,
+    _world_pos: Option<&RgbImage>,
+    _wp_min: [f32; 3],
+    _wp_max: [f32; 3],
 ) -> LoadedPbr {
     set.clone()
 }
@@ -142,6 +153,10 @@ fn apply_scratches(
     sp: &ScratchParamsFromUI, _dp: &DirtParamsFromUI, _rp: &RustParamsFromUI, _stp: &StreakParamsFromUI,
     scratch_masks: &[RgbImage],
     instances: &[MaskInstance],
+    uv_mask: Option<&GrayImage>,
+    _world_pos: Option<&RgbImage>,
+    _wp_min: [f32; 3],
+    _wp_max: [f32; 3],
 ) -> LoadedPbr {
     let (w, h) = (set.width(), set.height());
     if w == 0 || h == 0 { return set.clone(); }
@@ -156,7 +171,9 @@ fn apply_scratches(
             threshold: sp.threshold,
             sharpness: sp.sharpness,
         };
-        let m = dirt_pattern_from_masks(w, h, noise, params, scratch_masks, instances);
+        // Triplanar для scratches-через-маски: да, используем (это маски, как dirt/rust)
+        let tri_scale = sp.mask_scale.max(1.0);
+        let m = dirt_pattern_from_masks(w, h, noise, params, scratch_masks, instances, uv_mask, _world_pos, tri_scale);
         let flat_mask = m.flat;
         let height_mask = m.height;
 
@@ -267,19 +284,19 @@ fn apply_scratches(
         };
     }
 
+    // Procedural scratches — БЕЗ triplanar (тонкие линии, world-space даст артефакты).
     let params = ScratchParams {
         density: sp.density, length: sp.length, thickness: sp.thickness,
         waviness: sp.waviness, branches: sp.branches, clusters: sp.clusters,
         pos_x: sp.pos_x, pos_y: sp.pos_y,
     };
-    let pattern = scratches_pattern(w, h, noise.seed(), params);
+    let pattern = scratches_pattern(w, h, noise.seed(), params, uv_mask);
     let placement = match set.edge.as_ref() {
         Some(e) => e.clone(),
         None => match set.height.as_ref() { Some(h_img) => sobel_edge(h_img), None => return set.clone() },
     };
     let mask = modulate_by_placement(&pattern, &placement, 0.35);
     let mut new_albedo = if sp.realistic {
-        // Реалистичные: тёмное тело + яркая кайма по краям
         let darkened = set.albedo.as_ref()
             .map(|a| darken_by_mask_sharp(a, &mask, amount * 2.5));
         if sp.rim_highlight {
@@ -288,7 +305,6 @@ fn apply_scratches(
             darkened
         }
     } else {
-        // Нереалистичные: мягкое затемнение без каймы
         set.albedo.as_ref().map(|a| darken_by_mask_sharp(a, &mask, amount * 1.0))
     };
     let new_roughness = if sp.realistic {
@@ -315,6 +331,10 @@ fn apply_dirt(
     _sp: &ScratchParamsFromUI, dp: &DirtParamsFromUI, _rp: &RustParamsFromUI, _stp: &StreakParamsFromUI,
     dirt_masks: &[RgbImage],
     instances: &[MaskInstance],
+    uv_mask: Option<&GrayImage>,
+    world_pos: Option<&RgbImage>,
+    _wp_min: [f32; 3],
+    _wp_max: [f32; 3],
 ) -> LoadedPbr {
     let (w, h) = (set.width(), set.height());
     if w == 0 || h == 0 { return set.clone(); }
@@ -332,7 +352,9 @@ fn apply_dirt(
         sharpness: dp.sharpness,
     };
 
-    let masks = dirt_pattern_from_masks(w, h, noise, params, dirt_masks, instances);
+    // Triplanar: если world_pos есть — используем. Масштаб из dp.scale.
+    let tri_scale = dp.scale.max(0.5);
+    let masks = dirt_pattern_from_masks(w, h, noise, params, dirt_masks, instances, uv_mask, world_pos, tri_scale);
 
     let flat_mask = masks.flat.clone();
     let height_mask = masks.height.clone();
@@ -446,6 +468,10 @@ fn apply_rust(
     _sp: &ScratchParamsFromUI, _dp: &DirtParamsFromUI, rp: &RustParamsFromUI, _stp: &StreakParamsFromUI,
     rust_masks: &[RgbImage],
     instances: &[MaskInstance],
+    uv_mask: Option<&GrayImage>,
+    world_pos: Option<&RgbImage>,
+    _wp_min: [f32; 3],
+    _wp_max: [f32; 3],
 ) -> LoadedPbr {
     let (w, h) = (set.width(), set.height());
     if w == 0 || h == 0 { return set.clone(); }
@@ -463,7 +489,8 @@ fn apply_rust(
         sharpness: rp.sharpness,
     };
 
-    let masks = rust_pattern_from_masks(w, h, noise, params, rust_masks, instances);
+    let tri_scale = rp.scale.max(0.5);
+    let masks = rust_pattern_from_masks(w, h, noise, params, rust_masks, instances, uv_mask, world_pos, tri_scale);
 
     let color_core = [70u8, 35, 15];
     let color_body = [150u8, 75, 30];
@@ -564,6 +591,10 @@ fn apply_streaks(
     _sp: &ScratchParamsFromUI, _dp: &DirtParamsFromUI, _rp: &RustParamsFromUI, stp: &StreakParamsFromUI,
     streak_masks: &[RgbImage],
     instances: &[MaskInstance],
+    uv_mask: Option<&GrayImage>,
+    world_pos: Option<&RgbImage>,
+    _wp_min: [f32; 3],
+    _wp_max: [f32; 3],
 ) -> LoadedPbr {
     let (w, h) = (set.width(), set.height());
     if w == 0 || h == 0 { return set.clone(); }
@@ -578,7 +609,8 @@ fn apply_streaks(
             threshold: stp.threshold,
             sharpness: stp.sharpness,
         };
-        let m = dirt_pattern_from_masks(w, h, noise, params, streak_masks, instances);
+        let tri_scale = stp.mask_scale.max(0.5);
+        let m = dirt_pattern_from_masks(w, h, noise, params, streak_masks, instances, uv_mask, world_pos, tri_scale);
         (m.flat, m.height)
     } else {
         let params = StreaksProceduralParams {
@@ -594,14 +626,13 @@ fn apply_streaks(
             scale: stp.proc_scale,
             tileable: !stp.disable_tiling,
         };
-        // noise.seed() уже = params.seed + i*7919 для вариации i.
-        // Для i=1 это params.seed + 7919 — совпадает с превью.
         let var_seed = noise.seed();
-        let m = streaks_procedural_pattern(w, h, var_seed, params);
+        // Triplanar для процедурных потёков — да (лучше ложится на 3D-поверхности).
+        let tri_scale = stp.proc_scale.max(0.5);
+        let m = streaks_procedural_pattern(w, h, var_seed, params, uv_mask, world_pos, tri_scale);
         (m.body, m.height)
     };
 
-    // Толщина: для процедурного режима берём stp.thickness, для масок — stp.mask_thickness (диапазон -1..0, вдавливание).
     let height_thickness = if use_masks { stp.mask_thickness } else { stp.thickness };
 
     let color = stp.color;

@@ -1,6 +1,6 @@
 {
   "app.title": "WearCraft",
-  "app.version": "v1.1.1",
+  "app.version": "v1.2.0",
 
   "rail.load": "加载 3D",
   "rail.loadpbr": "加载 PBR",

@@ -128,6 +128,12 @@ pub struct WearParams {
     pub geo_limit_mode: Option<String>,
     pub geo_limit_softness: Option<f32>,
     pub geo_limit_invert: Option<bool>,
+    // UV-острова
+    pub uv_mask_path: Option<String>,
+    // World-position (triplanar)
+    pub world_pos_path: Option<String>,
+    pub world_pos_min: Option<[f32; 3]>,
+    pub world_pos_max: Option<[f32; 3]>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -572,6 +578,38 @@ fn load_geo_normal(params: &WearParams) -> Option<RgbImage> {
     }
 }
 
+// ============ UV-маска (для UV-островов) ============
+
+fn load_uv_mask(params: &WearParams) -> Option<GrayImage> {
+    let path = params.uv_mask_path.as_ref()?;
+    if path.is_empty() { return None; }
+    let p = Path::new(path);
+    if !p.is_file() { return None; }
+    match image::open(p) {
+        Ok(img) => Some(img.to_luma8()),
+        Err(e) => {
+            println!("[uv_mask] Не удалось открыть {}: {}", path, e);
+            None
+        }
+    }
+}
+
+// ============ World-position (triplanar) ============
+
+fn load_world_pos(params: &WearParams) -> Option<RgbImage> {
+    let path = params.world_pos_path.as_ref()?;
+    if path.is_empty() { return None; }
+    let p = Path::new(path);
+    if !p.is_file() { return None; }
+    match image::open(p) {
+        Ok(img) => Some(img.to_rgb8()),
+        Err(e) => {
+            println!("[world_pos] Не удалось открыть {}: {}", path, e);
+            None
+        }
+    }
+}
+
 // ============ Параметры из UI ============
 
 fn build_scratch_params(p: &WearParams) -> ScratchParamsFromUI {
@@ -712,6 +750,14 @@ pub async fn generate_wear(app: AppHandle, params: WearParams) -> Result<WearRes
     let geo_limit_softness = params.geo_limit_softness.unwrap_or(0.5).clamp(0.0, 1.0);
     let geo_limit_invert = params.geo_limit_invert.unwrap_or(false);
 
+    // ═══ UV-маска (для UV-островов) ═══
+    let uv_mask = load_uv_mask(&params);
+
+    // ═══ World-position (для triplanar) ═══
+    let world_pos = load_world_pos(&params);
+    let world_pos_min = params.world_pos_min.unwrap_or([-0.5, -0.5, -0.5]);
+    let world_pos_max = params.world_pos_max.unwrap_or([0.5, 0.5, 0.5]);
+
     let decal_data = if preset.name == "decal" {
         load_decal(&params)?
     } else {
@@ -760,10 +806,14 @@ pub async fn generate_wear(app: AppHandle, params: WearParams) -> Result<WearRes
                 &scratch_params, &dirt_params, &rust_params, &streak_params,
                 &mask_pool,
                 instances_for_this,
+                uv_mask.as_ref(),
+                world_pos.as_ref(),
+                world_pos_min,
+                world_pos_max,
             )
         };
 
-        // ═══ GEO LIMIT — интерполяция между оригиналом и эффектом ═══
+        // ═══ GEO LIMIT ═══
         let limited = if geo_limit_enabled {
             if let Some(ref gn) = geo_normal {
                 crate::core::pbr_ops::blend_by_geometry_mask(

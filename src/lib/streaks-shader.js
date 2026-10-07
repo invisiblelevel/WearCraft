@@ -1,4 +1,7 @@
-// Шейдер для превью Streaks. Процедурно ИЛИ маски. + Ограничение по геометрии.
+// Шейдер для превью Streaks. Два режима: procedural (value_noise + fbm + stretch) и masks.
+// + Ограничение по геометрии через vNormal.
+// + UV-острова через uUvMask.
+// + Triplanar projection через vWorldPos.
 import * as THREE from 'three';
 
 export const MAX_MASKS = 8;
@@ -18,11 +21,8 @@ const VERT = /* glsl */`
 
 const FRAG = /* glsl */`
   precision highp float;
-  precision highp int;
 
   #define MAX_MASKS 8
-  #define PI 3.14159265359
-  #define TAU 6.28318530718
 
   varying vec3 vWorldPos;
   varying vec3 vNormal;
@@ -49,7 +49,14 @@ const FRAG = /* glsl */`
   uniform vec4 uInstA[8];
   uniform vec4 uInstB[8];
 
-  uniform float uProcedural;
+  uniform bool uProcedural;
+  uniform bool uShowProcedural;
+
+  uniform float uThreshold;
+  uniform float uSharpness;
+  uniform float uThickness;
+  uniform float uAmount;
+  uniform vec3  uColor;
 
   uniform float uCount;
   uniform float uSize;
@@ -59,16 +66,8 @@ const FRAG = /* glsl */`
   uniform float uProcPosX;
   uniform float uProcPosY;
   uniform float uProcRotation;
-  uniform float uTileable;
-
-  uniform float uThreshold;
-  uniform float uSharpness;
-  uniform float uDeform;
-  uniform float uThickness;
-  uniform float uAmount;
-  uniform vec3  uColor;
-
-  uniform uint uSeed;
+  uniform bool  uTileable;
+  uniform float uSeed;
 
   uniform vec2 uRepeat;
   uniform float uRotation;
@@ -80,6 +79,15 @@ const FRAG = /* glsl */`
   uniform int  uGeoLimitMode;
   uniform float uGeoLimitSoftness;
   uniform bool uGeoLimitInvert;
+
+  uniform sampler2D uUvMask;
+  uniform bool uUvMaskEnabled;
+
+  // ─── Triplanar ───
+  uniform bool uTriplanarEnabled;
+  uniform vec3 uModelMin;
+  uniform vec3 uModelMax;
+  uniform float uTriScale;
 
   vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
   vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
@@ -109,72 +117,55 @@ const FRAG = /* glsl */`
     return 130.0 * dot(m, g);
   }
 
-  float hash2i(ivec2 p) {
-    uint h = uint(p.x) * 374761393u + uint(p.y) * 668265263u;
-    h = (h ^ (h >> 13u)) * 1274126177u;
+  vec2 triplanarUV(vec3 worldPos, vec3 nrm, float scale) {
+    vec3 p = worldPos * scale;
+    vec3 n = normalize(nrm);
+    vec3 w = vec3(abs(n.x), abs(n.y), abs(n.z));
+    w = w * w * w * w;
+    float sum = max(w.x + w.y + w.z, 1e-6);
+    w /= sum;
+
+    vec2 uv_x = p.yz;
+    vec2 uv_y = p.xz;
+    vec2 uv_z = p.xy;
+
+    return uv_x * w.x + uv_y * w.y + uv_z * w.z;
+  }
+
+  vec2 triplanarMaskUV(vec2 triUV, vec2 repeat, float rotation) {
+    vec2 t = triUV - 0.5;
+    float cs = cos(-rotation);
+    float sn = sin(-rotation);
+    t = vec2(t.x * cs - t.y * sn, t.x * sn + t.y * cs);
+    t = t * repeat + 0.5;
+    return t;
+  }
+
+  // ═══ Procedural Streaks — value_noise + fbm + stretch ═══
+  float hash2i(int x, int y) {
+    uint h = uint(x) * 374761393u + uint(y) * 668265263u;
+    h = h * 1274126177u;
+    h = h ^ (h >> 13u);
+    h = h * 1274126177u;
     return float((h ^ (h >> 16u)) & 0xFFFFFFu) / 16777215.0;
   }
 
-  float value_noise(vec2 p) {
-    vec2 p0 = floor(p);
-    ivec2 i0 = ivec2(p0);
-    vec2 f = p - p0;
-    vec2 s = f * f * (3.0 - 2.0 * f);
+  float valueNoise(vec2 p) {
+    int x0 = int(floor(p.x));
+    int y0 = int(floor(p.y));
+    float fx = p.x - float(x0);
+    float fy = p.y - float(y0);
+    float sx = fx * fx * (3.0 - 2.0 * fx);
+    float sy = fy * fy * (3.0 - 2.0 * fy);
 
-    float p00 = hash2i(i0);
-    float p10 = hash2i(i0 + ivec2(1, 0));
-    float p01 = hash2i(i0 + ivec2(0, 1));
-    float p11 = hash2i(i0 + ivec2(1, 1));
+    float p00 = hash2i(x0, y0);
+    float p10 = hash2i(x0 + 1, y0);
+    float p01 = hash2i(x0, y0 + 1);
+    float p11 = hash2i(x0 + 1, y0 + 1);
 
-    float top = mix(p00, p10, s.x);
-    float bot = mix(p01, p11, s.x);
-    return mix(top, bot, s.y);
-  }
-
-  float proceduralBodyLimit(vec2 uv, int max_octaves) {
-    if (uTileable < 0.5) {
-      if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return 0.0;
-    }
-
-    float count = clamp(uCount, 5.0, 100.0);
-    float size = clamp(uSize, 0.001, 0.10);
-    float stretch = clamp(uStretch, 1.0, 20.0);
-    float scale = clamp(uProcScale, 0.1, 5.0);
-
-    float vi = float(uSeed % 1000u) * 0.001;
-    float freq_scale = (0.3 + (count / 100.0) * 2.7) * (0.85 + vi * 0.30);
-    float base_freq = (1.0 / max(size, 0.001)) * 0.5 * freq_scale;
-    int octaves = int(3.0 + min(count / 25.0, 5.0));
-    if (octaves > max_octaves) octaves = max_octaves;
-
-    vec2 uv_s = vec2(uv.x, uv.y / stretch);
-
-    float offx = float(uSeed % 100u) * 0.1;
-    float offy = float((uSeed / 100u) % 100u) * 0.1;
-    uv_s += vec2(offx, offy);
-
-    float sum = 0.0;
-    float amp = 0.5;
-    float freq = base_freq / scale;
-    float total_amp = 0.0;
-    for (int i = 0; i < 8; i++) {
-      if (i >= octaves) break;
-      float n = value_noise(uv_s * freq);
-      sum += n * amp;
-      total_amp += amp;
-      amp *= 0.5;
-      freq *= 2.0;
-    }
-    float n_final = total_amp > 0.0 ? sum / total_amp : 0.0;
-
-    float thr_eff = uThreshold * 0.35 * (0.9 + vi * 0.2);
-    float shifted = clamp(n_final - thr_eff, 0.0, 1.0);
-    float window = 0.5 - uSharpness * 0.4;
-    return smoothstep(0.5 - window * 0.5, 0.5 + window * 0.5, shifted);
-  }
-
-  float proceduralBody(vec2 uv) {
-    return proceduralBodyLimit(uv, 8);
+    float top = p00 * (1.0 - sx) + p10 * sx;
+    float bot = p01 * (1.0 - sx) + p11 * sx;
+    return top * (1.0 - sy) + bot * sy;
   }
 
   vec4 pickMask(int i, vec2 uv) {
@@ -208,29 +199,16 @@ const FRAG = /* glsl */`
     return pickMask(i, m).r;
   }
 
-  float maskBody(vec2 warpedUv) {
-    float best = 0.0;
-    for (int i = 0; i < MAX_MASKS; i++) {
-      if (i >= uInstanceCount) break;
-      float v = sampleMask(i, warpedUv);
-      best = max(best, v);
-    }
-    float shifted = clamp(best - uThreshold * 0.5, 0.0, 1.0);
-    float window = 0.5 - uSharpness * 0.4;
-    return smoothstep(0.5 - window * 0.5, 0.5 + window * 0.5, shifted);
-  }
-
-  // ═══ GEO LIMIT — по vNormal, не по текстуре ═══
   float geoFactor() {
     if (!uGeoLimitEnabled) return 1.0;
 
     vec3 gn = normalize(vNormal);
 
     float base;
-    if (uGeoLimitMode == 1) base = max(gn.y, 0.0);        // top
-    else if (uGeoLimitMode == 2) base = max(-gn.y, 0.0);  // bottom
-    else if (uGeoLimitMode == 3) base = abs(gn.y);        // top+bottom
-    else base = 1.0 - abs(gn.y);                          // sides
+    if (uGeoLimitMode == 1) base = max(gn.y, 0.0);
+    else if (uGeoLimitMode == 2) base = max(-gn.y, 0.0);
+    else if (uGeoLimitMode == 3) base = abs(gn.y);
+    else base = 1.0 - abs(gn.y);
 
     float edge = uGeoLimitSoftness * 0.5;
     float lo = 0.5 - edge;
@@ -241,6 +219,58 @@ const FRAG = /* glsl */`
     return f;
   }
 
+  // Procedural streaks: считаем по любой UV (maskUv уже подготовлен)
+  float proceduralStreaksBody(vec2 maskUv) {
+    vec2 uvi = maskUv;
+
+    uvi.x -= uProcPosX;
+    uvi.y -= uProcPosY;
+
+    float r = -uProcRotation * 3.14159265 / 180.0;
+    float cs_r = cos(r);
+    float sn_r = sin(r);
+    vec2 c = uvi - 0.5;
+    uvi = vec2(c.x * cs_r - c.y * sn_r, c.x * sn_r + c.y * cs_r) + 0.5;
+
+    if (uTileable) {
+      uvi.x = fract(uvi.x);
+      uvi.y = fract(uvi.y);
+    }
+
+    float vi = mod(uSeed, 1000.0) / 1000.0;
+    float freqScale = (0.3 + (uCount / 100.0) * 2.7) * (0.85 + vi * 0.30);
+    float baseFreq = (1.0 / max(uSize, 0.001)) * 0.5 * freqScale;
+    float octaves = 3.0 + min(uCount / 25.0, 5.0);
+    float thrEff = uThreshold * 0.35 * (0.9 + vi * 0.2);
+
+    float offx = mod(floor(uSeed), 100.0) * 0.1;
+    float offy = mod(floor(uSeed / 100.0), 100.0) * 0.1;
+
+    vec2 uv_s = vec2(uvi.x + offx, uvi.y / uStretch + offy);
+
+    float sum = 0.0;
+    float amp = 0.5;
+    float freq = baseFreq / uProcScale;
+    float totalAmp = 0.0;
+    int oct = int(octaves);
+    for (int i = 0; i < 8; i++) {
+      if (i >= oct) break;
+      float n = valueNoise(uv_s * freq);
+      sum += n * amp;
+      totalAmp += amp;
+      amp *= 0.5;
+      freq *= 2.0;
+    }
+    float nFinal = totalAmp > 0.0 ? sum / totalAmp : 0.0;
+
+    float shifted = clamp(nFinal - thrEff, 0.0, 1.0);
+    float window = 0.5 - uSharpness * 0.4;
+    float e0 = 0.5 - window * 0.5;
+float e1 = 0.5 + window * 0.5;
+float tt = clamp((shifted - e0) / (e1 - e0), 0.0, 1.0);
+return tt * tt * (3.0 - 2.0 * tt);
+  }
+
   void main() {
     vec2 tiledUv = vUv - 0.5;
     float cs = cos(-uRotation);
@@ -248,73 +278,77 @@ const FRAG = /* glsl */`
     tiledUv = vec2(tiledUv.x * cs - tiledUv.y * sn, tiledUv.x * sn + tiledUv.y * cs);
     tiledUv = tiledUv * uRepeat + 0.5;
 
-    float body;
+    vec2 uv = tiledUv;
 
-    if (uProcedural > 0.5) {
-      vec2 uv = tiledUv;
-      float csp = cos(-uProcRotation);
-      float snp = sin(-uProcRotation);
-      vec2 c = uv - 0.5 - vec2(uProcPosX, uProcPosY);
-      uv = vec2(c.x * csp - c.y * snp + 0.5, c.x * snp + c.y * csp + 0.5);
-      if (uTileable > 0.5) uv = fract(uv);
-      body = proceduralBody(uv);
+    // ─── Триплан: maskUv ───
+    vec2 maskUv;
+    if (uTriplanarEnabled) {
+      vec3 p = (vWorldPos - uModelMin) / max(uModelMax - uModelMin, vec3(1e-6));
+      vec2 tri = triplanarUV(p, vNormal, uTriScale);
+      maskUv = triplanarMaskUV(tri, uRepeat, uRotation);
     } else {
-      vec2 uv = tiledUv;
-      vec2 warpedUv = uv;
-      if (uDeform > 0.01) {
-        float nx = snoise2(uv * 3.0);
-        float ny = snoise2(uv * 3.0 + vec2(100.0, 100.0));
-        warpedUv += vec2(nx, ny) * 0.1 * uDeform;
+      maskUv = uv;
+    }
+
+    float body = 0.0;
+    if (uProcedural && uShowProcedural) {
+      body = proceduralStreaksBody(maskUv);
+    } else if (!uProcedural) {
+      vec2 warpedUv = maskUv;
+      if (uWaviness > 0.01) {
+        float nx = snoise2(maskUv * 3.0);
+        float ny = snoise2(maskUv * 3.0 + vec2(100.0, 100.0));
+        warpedUv += vec2(nx, ny) * 0.1 * uWaviness;
       }
-      body = maskBody(warpedUv);
+
+      float best = 0.0;
+      for (int i = 0; i < MAX_MASKS; i++) {
+        if (i >= uInstanceCount) break;
+        float v = sampleMask(i, warpedUv);
+        best = max(best, v);
+      }
+
+      float shifted = clamp(best - uThreshold * 0.5, 0.0, 1.0);
+      float window = 0.5 - uSharpness * 0.4;
+      body = smoothstep(0.5 - window * 0.5, 0.5 + window * 0.5, shifted);
     }
 
     float gf = geoFactor();
     body *= gf;
 
+    float uv_m = 1.0;
+    if (uUvMaskEnabled) {
+      uv_m = texture2D(uUvMask, uv).r;
+      body *= uv_m;
+    }
+
     vec3 albedo = vec3(0.6, 0.6, 0.6);
-    if (uHasAlbedo) albedo = texture2D(uAlbedoTex, tiledUv).rgb;
+    if (uHasAlbedo) albedo = texture2D(uAlbedoTex, uv).rgb;
 
     albedo = mix(albedo, uColor, body * uAmount);
 
     vec3 nrm = normalize(vNormal);
     if (uHasNormal) {
-      vec3 texN = texture2D(uNormalTex, tiledUv).rgb * 2.0 - 1.0;
+      vec3 texN = texture2D(uNormalTex, uv).rgb * 2.0 - 1.0;
       nrm = normalize(nrm + texN * 0.5);
     }
 
-    if (uThickness > 0.01 && uAmount > 0.01 && body > 0.02 && body < 0.98) {
+    if (uThickness > 0.01 && uAmount > 0.01 && !uProcedural) {
       float eps = 1.0 / 512.0;
-      float bx1, bx2, by1, by2;
-
-      if (uProcedural > 0.5) {
-        const int SOBEL_OCT = 6;
-        vec2 uv = tiledUv;
-        float csp = cos(-uProcRotation);
-        float snp = sin(-uProcRotation);
-        vec2 c = uv - 0.5 - vec2(uProcPosX, uProcPosY);
-        uv = vec2(c.x * csp - c.y * snp + 0.5, c.x * snp + c.y * csp + 0.5);
-        if (uTileable > 0.5) uv = fract(uv);
-        bx1 = proceduralBodyLimit(uv + vec2(eps, 0.0), SOBEL_OCT);
-        bx2 = proceduralBodyLimit(uv - vec2(eps, 0.0), SOBEL_OCT);
-        by1 = proceduralBodyLimit(uv + vec2(0.0, eps), SOBEL_OCT);
-        by2 = proceduralBodyLimit(uv - vec2(0.0, eps), SOBEL_OCT);
-      } else {
-        vec2 uv = tiledUv;
-        vec2 wuv = uv;
-        if (uDeform > 0.01) {
-          float nx = snoise2(uv * 3.0);
-          float ny = snoise2(uv * 3.0 + vec2(100.0, 100.0));
-          wuv += vec2(nx, ny) * 0.1 * uDeform;
-        }
-        bx1 = maskBody(wuv + vec2(eps, 0.0));
-        bx2 = maskBody(wuv - vec2(eps, 0.0));
-        by1 = maskBody(wuv + vec2(0.0, eps));
-        by2 = maskBody(wuv - vec2(0.0, eps));
+      float bx1 = 0.0, bx2 = 0.0, by1 = 0.0, by2 = 0.0;
+      for (int i = 0; i < MAX_MASKS; i++) {
+        if (i >= uInstanceCount) break;
+        bx1 = max(bx1, sampleMask(i, maskUv + vec2(eps, 0.0)));
+        bx2 = max(bx2, sampleMask(i, maskUv - vec2(eps, 0.0)));
+        by1 = max(by1, sampleMask(i, maskUv + vec2(0.0, eps)));
+        by2 = max(by2, sampleMask(i, maskUv - vec2(0.0, eps)));
       }
-
       float gx = (bx1 - bx2) * 8.0 * uThickness * gf;
       float gy = (by1 - by2) * 8.0 * uThickness * gf;
+      if (uUvMaskEnabled) {
+        gx *= uv_m;
+        gy *= uv_m;
+      }
       vec3 tangent = normalize(cross(nrm, vec3(0.0, 0.0, 1.0)) + vec3(1e-5));
       vec3 bitangent = cross(nrm, tangent);
       nrm = normalize(nrm - tangent * gx - bitangent * gy);
@@ -329,7 +363,7 @@ const FRAG = /* glsl */`
     float spec = pow(max(dot(N, H), 0.0), 32.0);
 
     float rough = 0.7;
-    if (uHasRough) rough = texture2D(uRoughTex, tiledUv).r;
+    if (uHasRough) rough = texture2D(uRoughTex, uv).r;
     rough = clamp(rough + body * uAmount * 0.5, 0.0, 1.0);
 
     vec3 ambient = vec3(0.15);
@@ -360,26 +394,25 @@ export function createStreaksMaterial(albedoTex, normalTex, roughTex) {
     uInstA: { value: Array.from({ length: 8 }, () => new THREE.Vector4()) },
     uInstB: { value: Array.from({ length: 8 }, () => new THREE.Vector4()) },
 
-    uProcedural: { value: 1.0 },
-
-    uCount:        { value: 28.0 },
-    uSize:         { value: 0.015 },
-    uStretch:      { value: 20.0 },
-    uWaviness:     { value: 0.0 },
-    uProcScale:    { value: 1.0 },
-    uProcPosX:     { value: 0.0 },
-    uProcPosY:     { value: 0.0 },
-    uProcRotation: { value: 0.0 },
-    uTileable:     { value: 1.0 },
+    uProcedural: { value: true },
+    uShowProcedural: { value: true },
 
     uThreshold: { value: 0.2 },
     uSharpness: { value: 0.6 },
-    uDeform:    { value: 0.3 },
     uThickness: { value: 0.35 },
     uAmount:    { value: 0.9 },
     uColor:     { value: new THREE.Color(95/255, 85/255, 75/255) },
 
-    uSeed:     { value: 0 },
+    uCount:      { value: 28.0 },
+    uSize:       { value: 0.015 },
+    uStretch:    { value: 20.0 },
+    uWaviness:   { value: 0.0 },
+    uProcScale:  { value: 1.0 },
+    uProcPosX:   { value: 0.0 },
+    uProcPosY:   { value: 0.0 },
+    uProcRotation: { value: 0.0 },
+    uTileable:   { value: true },
+    uSeed:       { value: 1.0 },
 
     uRepeat:   { value: new THREE.Vector2(1.0, 1.0) },
     uRotation: { value: 0.0 },
@@ -391,6 +424,14 @@ export function createStreaksMaterial(albedoTex, normalTex, roughTex) {
     uGeoLimitMode:     { value: 0 },
     uGeoLimitSoftness: { value: 0.5 },
     uGeoLimitInvert:   { value: false },
+
+    uUvMask:        { value: null },
+    uUvMaskEnabled: { value: false },
+
+    uTriplanarEnabled: { value: false },
+    uModelMin:         { value: new THREE.Vector3(-0.5, -0.5, -0.5) },
+    uModelMax:         { value: new THREE.Vector3(0.5, 0.5, 0.5) },
+    uTriScale:         { value: 2.0 },
   };
 
   return new THREE.ShaderMaterial({
@@ -403,7 +444,31 @@ export function createStreaksMaterial(albedoTex, normalTex, roughTex) {
 export function updateStreaksUniforms(material, opts) {
   const u = material.uniforms;
 
-  u.uProcedural.value = opts.procedural ? 1.0 : 0.0;
+  const masks = opts.masks || [];
+  const instances = opts.transforms || opts.instances || [];
+  const maskCount = Math.min(masks.length, MAX_MASKS);
+  const instanceCount = Math.min(instances.length, MAX_MASKS);
+
+  const slots = [u.uMask0, u.uMask1, u.uMask2, u.uMask3, u.uMask4, u.uMask5, u.uMask6, u.uMask7];
+  for (let i = 0; i < MAX_MASKS; i++) {
+    if (i < instanceCount && maskCount > 0) {
+      slots[i].value = masks[i % maskCount];
+    } else {
+      slots[i].value = null;
+    }
+  }
+
+  u.uMaskCount.value = maskCount;
+  u.uInstanceCount.value = instanceCount;
+
+  for (let i = 0; i < MAX_MASKS; i++) {
+    const it = instances[i] || { offsetX: 0, offsetY: 0, scale: 1, rotation: 0, flipX: 1, flipY: 1, tileable: true };
+    u.uInstA.value[i].set(it.offsetX, it.offsetY, it.scale, it.rotation);
+    u.uInstB.value[i].set(it.flipX, it.flipY, (it.tileable === false) ? 0.0 : 1.0, 0);
+  }
+
+  if (opts.procedural !== undefined) u.uProcedural.value = !!opts.procedural;
+  if (opts.showProcedural !== undefined) u.uShowProcedural.value = !!opts.showProcedural;
 
   u.uThreshold.value = opts.threshold ?? 0.2;
   u.uSharpness.value = opts.sharpness ?? 0.6;
@@ -414,45 +479,16 @@ export function updateStreaksUniforms(material, opts) {
     u.uColor.value.setRGB(opts.color[0]/255, opts.color[1]/255, opts.color[2]/255);
   }
 
-  if (opts.procedural) {
-    u.uCount.value        = opts.count ?? 28.0;
-    u.uSize.value         = opts.size ?? 0.015;
-    u.uStretch.value      = opts.stretch ?? 20.0;
-    u.uWaviness.value     = opts.waviness ?? 0.0;
-    u.uProcScale.value    = opts.procScale ?? 1.0;
-    u.uProcPosX.value     = opts.posX ?? 0.0;
-    u.uProcPosY.value     = opts.posY ?? 0.0;
-    u.uProcRotation.value = (opts.rotation ?? 0.0) * Math.PI / 180.0;
-    u.uTileable.value     = (opts.disableTiling === true) ? 0.0 : 1.0;
-
-    const varSeed = ((opts.seed ?? 0) + 7919) >>> 0;
-    u.uSeed.value = varSeed;
-  } else {
-    u.uDeform.value = opts.deform ?? 0.3;
-
-    const masks = opts.masks || [];
-    const instances = opts.transforms || [];
-    const maskCount = Math.min(masks.length, MAX_MASKS);
-    const instanceCount = Math.min(instances.length, MAX_MASKS);
-
-    const slots = [u.uMask0, u.uMask1, u.uMask2, u.uMask3, u.uMask4, u.uMask5, u.uMask6, u.uMask7];
-    for (let i = 0; i < MAX_MASKS; i++) {
-      if (i < instanceCount && maskCount > 0) {
-        slots[i].value = masks[i % maskCount];
-      } else {
-        slots[i].value = null;
-      }
-    }
-
-    u.uMaskCount.value = maskCount;
-    u.uInstanceCount.value = instanceCount;
-
-    for (let i = 0; i < MAX_MASKS; i++) {
-      const it = instances[i] || { offsetX: 0, offsetY: 0, scale: 1, rotation: 0, flipX: 1, flipY: 1, tileable: true };
-      u.uInstA.value[i].set(it.offsetX, it.offsetY, it.scale, it.rotation);
-      u.uInstB.value[i].set(it.flipX, it.flipY, (it.tileable === false) ? 0.0 : 1.0, 0);
-    }
-  }
+  if (opts.count !== undefined)     u.uCount.value = opts.count;
+  if (opts.size !== undefined)      u.uSize.value = opts.size;
+  if (opts.stretch !== undefined)   u.uStretch.value = opts.stretch;
+  if (opts.waviness !== undefined)  u.uWaviness.value = opts.waviness;
+  if (opts.procScale !== undefined) u.uProcScale.value = opts.procScale;
+  if (opts.posX !== undefined)      u.uProcPosX.value = opts.posX;
+  if (opts.posY !== undefined)      u.uProcPosY.value = opts.posY;
+  if (opts.rotation !== undefined)  u.uProcRotation.value = opts.rotation;
+  if (opts.disableTiling !== undefined) u.uTileable.value = !opts.disableTiling;
+  if (opts.seed !== undefined)      u.uSeed.value = opts.seed;
 
   u.uRepeat.value.set(opts.repeatX ?? 1.0, opts.repeatY ?? 1.0);
   u.uRotation.value = (opts.rotationDeg ?? 0) * Math.PI / 180.0;
@@ -474,4 +510,14 @@ export function updateStreaksUniforms(material, opts) {
   if (opts.geoLimitMode !== undefined) u.uGeoLimitMode.value = opts.geoLimitMode;
   if (opts.geoLimitSoftness !== undefined) u.uGeoLimitSoftness.value = opts.geoLimitSoftness;
   if (opts.geoLimitInvert !== undefined) u.uGeoLimitInvert.value = !!opts.geoLimitInvert;
+
+  if (opts.uvMask !== undefined) {
+    u.uUvMask.value = opts.uvMask;
+    u.uUvMaskEnabled.value = !!opts.uvMask;
+  }
+
+  if (opts.triplanarEnabled !== undefined) u.uTriplanarEnabled.value = !!opts.triplanarEnabled;
+  if (opts.modelMin) u.uModelMin.value.set(opts.modelMin[0], opts.modelMin[1], opts.modelMin[2]);
+  if (opts.modelMax) u.uModelMax.value.set(opts.modelMax[0], opts.modelMax[1], opts.modelMax[2]);
+  if (opts.triScale !== undefined) u.uTriScale.value = opts.triScale;
 }
