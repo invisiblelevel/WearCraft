@@ -561,6 +561,15 @@
     }
     return targets;
   }
+  
+  // ═══ Bake geo-normal / uv-mask / world-pos при загрузке модели ═══
+  $effect(() => {
+    const m = viewer.loadedModel;
+    if (!m) return;
+    queueMicrotask(() => bakeGeoNormalForCurrentModel());
+    queueMicrotask(() => bakeUvMaskForCurrentModel());
+    queueMicrotask(() => bakeWorldPosForCurrentModel());
+  });
 
   $effect(() => {
     pbr.active.albedo; pbr.active.normal; pbr.active.roughness;
@@ -652,22 +661,18 @@
   async function applyShaderMaterial() {
     if (ui.currentVariation !== 0) return;
 
-    // Procedural streaks — без real-time превью (см. scratches procedural)
-    if (params.preset === 'streaks' && streakParams.procedural) {
-      pushLog('[Preview] Streaks procedural — превью недоступно, смотри после Generate');
-      return;
-    }
-
     const targets = getActiveMeshes();
     if (targets.length === 0) return;
 
     const preset = params.preset;
     if (preset !== 'rust' && preset !== 'dirt' && preset !== 'streaks' && preset !== 'scratches') return;
 
-    if (preset === 'scratches' && scratchParams.procedural) return;
-    if (preset === 'streaks' && streakParams.procedural) return;
-
+    const scratchesProcedural = (preset === 'scratches' && scratchParams.procedural);
     const streaksProcedural = (preset === 'streaks' && streakParams.procedural);
+
+    // Procedural scratches — без real-time превью (по решению захода 38).
+    // Но если включён triplanar — показываем как procedural-шум.
+    if (scratchesProcedural && !settings.triplanarEnabled) return;
 
     let paths = [];
     let pathsKey = '';
@@ -752,8 +757,11 @@
     // UV-маска
     const uvMaskTex = await getUvMaskTexture();
 
-    // Triplanar
-    const triEnabled = isWorldPosSupported() && ui.worldPosReady;
+    // Triplanar — только для procedural-режимов и только если юзер включил чекбокс.
+    // Для масок triplanar всегда выключен (UV-проекция, одно пятно).
+    const triSupported = isWorldPosSupported() && ui.worldPosReady;
+    const triAllowedForPreset = (preset === 'streaks' || preset === 'scratches');
+    const triEnabled = triSupported && triAllowedForPreset && settings.triplanarEnabled;
     const triScale = 2.0;
     const modelMin = ui.worldPosBounds?.min ?? [-0.5, -0.5, -0.5];
     const modelMax = ui.worldPosBounds?.max ?? [0.5, 0.5, 0.5];
@@ -782,7 +790,7 @@
         procedural: streakParams.procedural,
         threshold: streakParams.threshold,
         sharpness: streakParams.sharpness,
-        thickness: streakParams.thickness,
+        thickness: streakParams.procedural ? streakParams.thickness : streakParams.maskThickness,
         amount:    (params.amount || 65) / 100.0,
         color:     streakParams.color,
         count:     streakParams.count,
@@ -793,7 +801,7 @@
         posX:      streakParams.posX,
         posY:      streakParams.posY,
         rotation:  streakParams.rotation,
-        seed:      ((params.seed + 1 * 7919) >>> 0),
+        seed:      ((params.seed + 1 * 7919) >>> 0) % 10000,
         disableTiling: streakParams.disableTiling,
         masks:     loadedMaskTextures,
         transforms,
@@ -1025,6 +1033,7 @@
     streakParams.procedural;
     streakParams.count;
     streakParams.threshold; streakParams.sharpness; streakParams.thickness;
+    streakParams.maskThickness;
     streakParams.color[0]; streakParams.color[1]; streakParams.color[2];
     streakParams.size; streakParams.stretch;
     streakParams.waviness;
@@ -1063,6 +1072,8 @@
     ui.geoNormalPath;
     viewer.shape;
     viewer.loadedModel;
+    ui.triplanarEnabled;
+    settings.triplanarEnabled;
 
     if (!renderer) return;
     if (ui.currentVariation !== 0) return;

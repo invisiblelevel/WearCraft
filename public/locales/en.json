@@ -79,6 +79,7 @@
   "streak.thickness": "Thickness",
   "streak.waviness": "Waviness",
   "streak.length": "Length",
+  "streak.triplanar": "Triplanar (3D projection)",
 
   "rust.title": "RUST SETTINGS",
   "rust.count": "Count",

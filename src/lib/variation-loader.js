@@ -228,7 +228,7 @@ export async function loadVariation(index) {
 
         // Procedural streaks — обновляем seed вариации (полный varSeed, не % 1000)
         if (mat.uniforms.uSeed && mat.uniforms.uProcedural && mat.uniforms.uProcedural.value === true) {
-          const varSeed = (params.seed + index * 7919) >>> 0;
+          const varSeed = ((params.seed + index * 7919) >>> 0) % 10000;
           mat.uniforms.uSeed.value = varSeed;
         }
 

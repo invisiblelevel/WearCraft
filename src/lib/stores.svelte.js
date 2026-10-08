@@ -34,7 +34,7 @@ export const scratchParams = $state({
   threshold: 0.5,
   sharpness: 0.5,
   color: [95, 85, 75],
-  maskThickness: -0.3,
+  maskThickness: 0.3,
   maskRimHighlight: true,
   maskNormalEnabled: true,
   disableTiling: false,
@@ -62,7 +62,7 @@ export function resetScratchParams() {
   scratchParams.threshold = 0.5;
   scratchParams.sharpness = 0.5;
   scratchParams.color = [95, 85, 75];
-  scratchParams.maskThickness = -0.3;
+  scratchParams.maskThickness = 0.3;
   scratchParams.maskRimHighlight = true;
   scratchParams.maskNormalEnabled = true;
   scratchParams.disableTiling = false;
@@ -159,7 +159,7 @@ export const streakParams = $state({
   procScale: 1.0,
   maskScale: 1.0,
   deform: 0.3,
-  maskThickness: -0.3,
+ maskThickness: 0.3,
   randomRotation: false,
   disableTiling: false,
 });
@@ -182,7 +182,7 @@ export function resetStreakParams() {
   streakParams.procScale = 1.0;
   streakParams.maskScale = 1.0;
   streakParams.deform = 0.3;
-  streakParams.maskThickness = -0.3;
+  streakParams.maskThickness = 0.3;
   streakParams.randomRotation = false;
   streakParams.disableTiling = false;
 }
@@ -398,6 +398,7 @@ const DEFAULT_SETTINGS = {
   geometryLimitMode: 'sides',
   geometryLimitSoftness: 0.5,
   geometryLimitInvert: false,
+  triplanarEnabled: false,
 };
 
 function loadSettings() {
@@ -437,6 +438,7 @@ function loadSettings() {
       if (typeof parsed.geometryLimitMode === 'string') clean.geometryLimitMode = parsed.geometryLimitMode;
       if (typeof parsed.geometryLimitSoftness === 'number') clean.geometryLimitSoftness = parsed.geometryLimitSoftness;
       if (typeof parsed.geometryLimitInvert === 'boolean') clean.geometryLimitInvert = parsed.geometryLimitInvert;
+      if (typeof parsed.triplanarEnabled === 'boolean') clean.triplanarEnabled = parsed.triplanarEnabled;
       return clean;
     }
   } catch (e) {}
@@ -473,6 +475,7 @@ export function saveSettings() {
       geometryLimitMode: settings.geometryLimitMode,
       geometryLimitSoftness: settings.geometryLimitSoftness,
       geometryLimitInvert: settings.geometryLimitInvert,
+      triplanarEnabled: settings.triplanarEnabled,
     }));
   } catch (e) {}
 }
@@ -571,6 +574,8 @@ export const ui = $state({
   geometryLimitMode: 'sides',
   geometryLimitSoftness: 0.5,
   geometryLimitInvert: false,
+
+  triplanarEnabled: false,
 });
 
 ui.zoom = settings.uiZoom || 1.0;
@@ -581,6 +586,7 @@ ui.geometryLimitEnabled = settings.geometryLimitEnabled ?? false;
 ui.geometryLimitMode = settings.geometryLimitMode ?? 'sides';
 ui.geometryLimitSoftness = settings.geometryLimitSoftness ?? 0.5;
 ui.geometryLimitInvert = settings.geometryLimitInvert ?? false;
+ui.triplanarEnabled = settings.triplanarEnabled ?? false;
 
 export function setEnvironment(id) {
   ui.environment = id;

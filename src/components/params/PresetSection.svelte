@@ -14,6 +14,7 @@
     rustParams, resetRustParams,
     streakParams, resetStreakParams,
     getUserMask,
+    isWorldPosSupported,
   } from '../../lib/stores.svelte.js';
 
   function persistGroups() { saveSettings(); }
@@ -86,7 +87,7 @@
 
       <ColorField label={t('dirt.color')} bind:color={scratchParams.color} bind:pickerOpen={ui.colorPickerOpen} />
 
-      <RangeField label={t('dirt.thickness')} bind:value={scratchParams.maskThickness} min={-1} max={0} step={0.05} format={(v) => (v * 100).toFixed(0) + '%'} />
+      <RangeField label={t('dirt.thickness')} bind:value={scratchParams.maskThickness} min={0} max={1} step={0.05} format={(v) => (v * 100).toFixed(0) + '%'} />
 
       <PosPanel
         bind:open={posOpenScratches}
@@ -124,6 +125,13 @@
     />
 
     {#if streakParams.procedural}
+      {#if isWorldPosSupported()}
+        <label class="check normal-check">
+          <input type="checkbox" bind:checked={settings.triplanarEnabled} onchange={saveSettings} />
+          {t('streak.triplanar')}
+        </label>
+      {/if}
+
       <RangeField label={t('streak.count')}     bind:value={streakParams.count}     min={5} max={100} step={1} format={(v) => v.toFixed(0)} />
       <RangeField label={t('streak.size')}      bind:value={streakParams.size}      min={0.001} max={0.03} step={0.0005} format={(v) => (v * 100).toFixed(2) + '%'} />
       <RangeField label={t('streak.stretch_y')} bind:value={streakParams.stretch}   min={1} max={20} step={0.1} format={(v) => v.toFixed(1)} />
@@ -156,7 +164,7 @@
 
       <ColorField label={t('streak.color')} bind:color={streakParams.color} bind:pickerOpen={ui.colorPickerOpen} />
 
-      <RangeField label={t('dirt.thickness')} bind:value={streakParams.maskThickness} min={-1} max={0} step={0.05} format={(v) => (v * 100).toFixed(0) + '%'} />
+      <RangeField label={t('dirt.thickness')} bind:value={streakParams.maskThickness} min={0} max={1} step={0.05} format={(v) => (v * 100).toFixed(0) + '%'} />
 
       <PosPanel
         bind:open={posOpenStreaks}

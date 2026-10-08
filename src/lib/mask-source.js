@@ -5,7 +5,7 @@ import { settings, pushLog } from './stores.svelte.js';
 /**
  * Возвращает массив полных путей к маскам для пресета.
  * Приоритеты:
- *   1. Своя маска (userMaskRust / userMaskDirt / userMaskStreak) — одна, приоритетная.
+ *   1. Своя маска (userMaskRust / userMaskDirt / userMaskStreak / userMaskScratch) — одна.
  *   2. Если выбраны галочки (folderMaskNames) — только они.
  *   3. Если folderMaskNames = [] — пустой пул.
  *   4. Если folderMaskNames = null — все.
@@ -14,19 +14,22 @@ export async function resolveMaskPaths(preset) {
   const isRust = preset === 'rust';
   const isStreaks = preset === 'streaks';
   const isDirt = preset === 'dirt';
-  if (!isRust && !isStreaks && !isDirt) return [];
+  const isScratch = preset === 'scratches';
+  if (!isRust && !isStreaks && !isDirt && !isScratch) return [];
 
   // Своя маска — приоритет
   const userMask = isRust ? settings.userMaskRust
                  : isStreaks ? settings.userMaskStreak
+                 : isScratch ? settings.userMaskScratch
                  : settings.userMaskDirt;
   if (userMask) {
     return [userMask];
   }
 
-  const subfolder = preset;  // "rust" | "dirt" | "streaks"
+  const subfolder = preset;  // "rust" | "dirt" | "streaks" | "scratches"
   const selected = isRust ? settings.folderMaskNamesRust
                  : isStreaks ? settings.folderMaskNamesStreak
+                 : isScratch ? settings.folderMaskNamesScratch
                  : settings.folderMaskNamesDirt;
 
   // Пустой список — пустой пул (не «все»)

@@ -42,8 +42,6 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "assets/rust/*",
-      "assets/dirt/*",
       "assets/manual.html",
       "assets/screenshots/*"
     ],
@@ -52,7 +50,7 @@
         "type": "offlineInstaller"
       },
       "nsis": {
-		"installMode": "both",
+        "installMode": "both",
         "languages": ["Russian", "English", "SimpChinese"],
         "displayLanguageSelector": true
       }

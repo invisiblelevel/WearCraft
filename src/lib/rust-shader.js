@@ -2,7 +2,7 @@
 // + Ограничение по геометрии через vNormal.
 // + UV-острова через uUvMask.
 // + Triplanar projection через vWorldPos.
-// Volume: объёмная ржавчина (выпуклая/вдавленная).
+// + uBodyEnabled: при v>0 отключаем расчёт body (показываем только запечку).
 import * as THREE from 'three';
 
 export const MAX_MASKS = 8;
@@ -50,6 +50,8 @@ const FRAG = /* glsl */`
   uniform vec4 uInstA[8];
   uniform vec4 uInstB[8];
 
+  uniform bool uBodyEnabled;
+
   uniform float uThreshold;
   uniform float uSharpness;
   uniform float uDeform;
@@ -70,7 +72,6 @@ const FRAG = /* glsl */`
   uniform sampler2D uUvMask;
   uniform bool uUvMaskEnabled;
 
-  // ─── Triplanar ───
   uniform bool uTriplanarEnabled;
   uniform vec3 uModelMin;
   uniform vec3 uModelMax;
@@ -204,17 +205,21 @@ const FRAG = /* glsl */`
       warpedUv += vec2(nx, ny) * 0.1 * uDeform;
     }
 
-    float best = 0.0;
-    for (int i = 0; i < MAX_MASKS; i++) {
-      if (i >= uInstanceCount) break;
-      float v = sampleMask(i, warpedUv);
-      best = max(best, v);
-    }
+    float body = 0.0;
+    float core = 0.0;
+    if (uBodyEnabled) {
+      float best = 0.0;
+      for (int i = 0; i < MAX_MASKS; i++) {
+        if (i >= uInstanceCount) break;
+        float v = sampleMask(i, warpedUv);
+        best = max(best, v);
+      }
 
-    float shifted = clamp(best - uThreshold * 0.5, 0.0, 1.0);
-    float window = 0.5 - uSharpness * 0.4;
-    float body = smoothstep(0.5 - window * 0.5, 0.5 + window * 0.5, shifted);
-    float core = smoothstep(0.7, 0.95, shifted);
+      float shifted = clamp(best - uThreshold * 0.5, 0.0, 1.0);
+      float window = 0.5 - uSharpness * 0.4;
+      body = smoothstep(0.5 - window * 0.5, 0.5 + window * 0.5, shifted);
+      core = smoothstep(0.7, 0.95, shifted);
+    }
 
     float gf = geoFactor();
     body *= gf;
@@ -246,7 +251,7 @@ const FRAG = /* glsl */`
       nrm = normalize(nrm + texN * 0.5);
     }
 
-    if (abs(uVolume) > 0.01 && uAmount > 0.01) {
+    if (abs(uVolume) > 0.01 && uAmount > 0.01 && uBodyEnabled) {
       float eps = 1.0 / 512.0;
       float bx1 = 0.0, bx2 = 0.0, by1 = 0.0, by2 = 0.0;
       for (int i = 0; i < MAX_MASKS; i++) {
@@ -307,6 +312,8 @@ export function createRustMaterial(albedoTex, normalTex, roughTex) {
     uInstA: { value: Array.from({ length: 8 }, () => new THREE.Vector4()) },
     uInstB: { value: Array.from({ length: 8 }, () => new THREE.Vector4()) },
 
+    uBodyEnabled: { value: true },
+
     uThreshold: { value: 0.5 },
     uSharpness: { value: 0.5 },
     uDeform:    { value: 0.5 },
@@ -365,6 +372,8 @@ export function updateRustUniforms(material, opts) {
     u.uInstA.value[i].set(it.offsetX, it.offsetY, it.scale, it.rotation);
     u.uInstB.value[i].set(it.flipX, it.flipY, (it.tileable === false) ? 0.0 : 1.0, 0);
   }
+
+  if (opts.bodyEnabled !== undefined) u.uBodyEnabled.value = !!opts.bodyEnabled;
 
   u.uThreshold.value = opts.threshold ?? 0.5;
   u.uSharpness.value = opts.sharpness ?? 0.5;

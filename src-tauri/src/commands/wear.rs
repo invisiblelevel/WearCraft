@@ -216,14 +216,12 @@ fn copy_builtin_to(app: &AppHandle, subfolder: &str, dest: &Path) {
             if let Some(name) = p.file_name() {
                 let target = dest.join(name);
                 if target.exists() { continue; }
-                if let Err(e) = std::fs::copy(p, &target) {
-                    println!("[wear] Не удалось скопировать {:?}: {}", p, e);
-                }
+                let _ = std::fs::copy(p, &target);
             }
         }
         return;
     }
-    println!("[wear] Встроенные маски ({}) не найдены для копирования", subfolder);
+    // Источник не найден — молча. Юзер сам загрузит маски через UI.
 }
 
 fn list_masks_in_dir(dir: &Path) -> Vec<String> {
@@ -318,6 +316,7 @@ fn open_as_rgb(p: &Path) -> Option<RgbImage> {
                     rgb.put_pixel(x, y, image::Rgb([v, v, v]));
                 }
             }
+            image::imageops::flip_vertical_in_place(&mut rgb);
             Some(rgb)
         }
         Err(_) => None,
@@ -631,7 +630,7 @@ fn build_scratch_params(p: &WearParams) -> ScratchParamsFromUI {
         threshold: p.scratch_threshold.unwrap_or(0.5),
         sharpness: p.scratch_sharpness.unwrap_or(0.5),
         color: p.scratch_color.unwrap_or([95, 85, 75]),
-        mask_thickness: p.scratch_mask_thickness.unwrap_or(-0.3),
+        mask_thickness: p.scratch_mask_thickness.unwrap_or(0.3),
         mask_rim: p.scratch_mask_rim.unwrap_or(true),
         mask_normal: p.scratch_mask_normal.unwrap_or(true),
         disable_tiling: p.scratch_disable_tiling.unwrap_or(false),
@@ -689,7 +688,7 @@ fn build_streak_params(p: &WearParams) -> StreakParamsFromUI {
         mask_scale: p.streak_mask_scale.unwrap_or(1.0),
         deform: p.streak_deform.unwrap_or(0.3),
         disable_tiling: p.streak_disable_tiling.unwrap_or(false),
-        mask_thickness: p.streak_mask_thickness.unwrap_or(-0.3),
+        mask_thickness: p.streak_mask_thickness.unwrap_or(0.3),
         random_rotation: p.streak_random_rotation.unwrap_or(false),
     }
 }

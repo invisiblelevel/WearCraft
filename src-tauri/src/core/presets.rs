@@ -4,7 +4,9 @@ use rayon::prelude::*;
 use crate::core::noise::TilingNoise;
 use crate::core::sobel::sobel_edge;
 use crate::core::pattern::{
-    scratches_pattern, dirt_pattern_from_masks, rust_pattern_from_masks,
+    scratches_pattern,
+    dirt_pattern_masks, rust_pattern_masks,
+    streaks_mask_pattern, scratches_mask_pattern,
     streaks_procedural_pattern,
     modulate_by_placement,
     ScratchParams, StreaksProceduralParams, MaskPatternParams, MaskInstance,
@@ -154,7 +156,7 @@ fn apply_scratches(
     scratch_masks: &[RgbImage],
     instances: &[MaskInstance],
     uv_mask: Option<&GrayImage>,
-    _world_pos: Option<&RgbImage>,
+    world_pos: Option<&RgbImage>,
     _wp_min: [f32; 3],
     _wp_max: [f32; 3],
 ) -> LoadedPbr {
@@ -170,10 +172,11 @@ fn apply_scratches(
             deform: sp.deform,
             threshold: sp.threshold,
             sharpness: sp.sharpness,
+            tri_blend_sharpness: 8.0,
         };
-        // Triplanar для scratches-через-маски: да, используем (это маски, как dirt/rust)
         let tri_scale = sp.mask_scale.max(1.0);
-        let m = dirt_pattern_from_masks(w, h, noise, params, scratch_masks, instances, uv_mask, _world_pos, tri_scale);
+        // ── SCRATCHES-MASK: своя функция ──
+        let m = scratches_mask_pattern(w, h, noise, params, scratch_masks, instances, uv_mask, world_pos, tri_scale);
         let flat_mask = m.flat;
         let height_mask = m.height;
 
@@ -198,7 +201,7 @@ fn apply_scratches(
         };
 
         let height_amt = amount * sp.mask_thickness.abs();
-        let height_sign: f32 = if sp.mask_thickness >= 0.0 { 1.0 } else { -1.0 };
+        let height_sign: f32 = 1.0;
         let new_height = if let Some(orig_h) = set.height.as_ref() {
             let (hw, hh) = orig_h.dimensions();
             if hw != w || hh != h {
@@ -284,19 +287,23 @@ fn apply_scratches(
         };
     }
 
-    // Procedural scratches — БЕЗ triplanar (тонкие линии, world-space даст артефакты).
+    // Procedural scratches — с triplanar (если world_pos есть)
     let params = ScratchParams {
         density: sp.density, length: sp.length, thickness: sp.thickness,
         waviness: sp.waviness, branches: sp.branches, clusters: sp.clusters,
         pos_x: sp.pos_x, pos_y: sp.pos_y,
     };
-    let pattern = scratches_pattern(w, h, noise.seed(), params, uv_mask);
+    let tri_scale = 2.0;
+    let pattern = scratches_pattern(
+        w, h, noise.seed(), params, uv_mask,
+        world_pos, tri_scale, 8.0,
+    );
     let placement = match set.edge.as_ref() {
         Some(e) => e.clone(),
         None => match set.height.as_ref() { Some(h_img) => sobel_edge(h_img), None => return set.clone() },
     };
     let mask = modulate_by_placement(&pattern, &placement, 0.35);
-    let mut new_albedo = if sp.realistic {
+    let new_albedo = if sp.realistic {
         let darkened = set.albedo.as_ref()
             .map(|a| darken_by_mask_sharp(a, &mask, amount * 2.5));
         if sp.rim_highlight {
@@ -350,11 +357,12 @@ fn apply_dirt(
         deform: dp.deform,
         threshold: dp.threshold,
         sharpness: dp.sharpness,
+        tri_blend_sharpness: 8.0,
     };
 
-    // Triplanar: если world_pos есть — используем. Масштаб из dp.scale.
     let tri_scale = dp.scale.max(0.5);
-    let masks = dirt_pattern_from_masks(w, h, noise, params, dirt_masks, instances, uv_mask, world_pos, tri_scale);
+    // ── DIRT: своя функция ──
+    let masks = dirt_pattern_masks(w, h, noise, params, dirt_masks, instances, uv_mask, world_pos, tri_scale);
 
     let flat_mask = masks.flat.clone();
     let height_mask = masks.height.clone();
@@ -487,10 +495,12 @@ fn apply_rust(
         deform: rp.deform,
         threshold: rp.threshold,
         sharpness: rp.sharpness,
+        tri_blend_sharpness: 8.0,
     };
 
     let tri_scale = rp.scale.max(0.5);
-    let masks = rust_pattern_from_masks(w, h, noise, params, rust_masks, instances, uv_mask, world_pos, tri_scale);
+    // ── RUST: своя функция. core/body/edge/height — ВСЕ FLIPPED. ──
+    let masks = rust_pattern_masks(w, h, noise, params, rust_masks, instances, uv_mask, world_pos, tri_scale);
 
     let color_core = [70u8, 35, 15];
     let color_body = [150u8, 75, 30];
@@ -608,9 +618,11 @@ fn apply_streaks(
             deform: stp.deform,
             threshold: stp.threshold,
             sharpness: stp.sharpness,
+            tri_blend_sharpness: 8.0,
         };
         let tri_scale = stp.mask_scale.max(0.5);
-        let m = dirt_pattern_from_masks(w, h, noise, params, streak_masks, instances, uv_mask, world_pos, tri_scale);
+        // ── STREAKS-MASK: своя функция ──
+        let m = streaks_mask_pattern(w, h, noise, params, streak_masks, instances, uv_mask, world_pos, tri_scale);
         (m.flat, m.height)
     } else {
         let params = StreaksProceduralParams {
@@ -627,7 +639,6 @@ fn apply_streaks(
             tileable: !stp.disable_tiling,
         };
         let var_seed = noise.seed();
-        // Triplanar для процедурных потёков — да (лучше ложится на 3D-поверхности).
         let tri_scale = stp.proc_scale.max(0.5);
         let m = streaks_procedural_pattern(w, h, var_seed, params, uv_mask, world_pos, tri_scale);
         (m.body, m.height)
@@ -657,7 +668,7 @@ fn apply_streaks(
         set.normal.clone()
     };
 
-    let height_amt = amount * height_thickness;
+    let height_amt = amount * height_thickness.abs();
     let new_height = if let Some(orig_h) = set.height.as_ref() {
         let (hw, hh) = orig_h.dimensions();
         if hw != w || hh != h {
@@ -665,7 +676,7 @@ fn apply_streaks(
         } else {
             let h_raw = orig_h.as_raw();
             let m_raw = height_mask.as_raw();
-            let sign: f32 = if height_thickness >= 0.0 { 1.0 } else { -1.0 };
+            let sign: f32 = 1.0;
             let flat: Vec<u8> = (0..h as usize).into_par_iter().flat_map(|yi| {
                 let y = yi as u32;
                 let mut row = Vec::with_capacity(w as usize);

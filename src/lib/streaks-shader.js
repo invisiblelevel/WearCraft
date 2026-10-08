@@ -2,6 +2,9 @@
 // + Ограничение по геометрии через vNormal.
 // + UV-острова через uUvMask.
 // + Triplanar projection через vWorldPos.
+// + uDeform: деформация в mask-режиме.
+// + uThickness: работает в обоих режимах (в procedural — градиент по телу).
+// + uSeed: ОБЯЗАТЕЛЬНО передавать seed % 10000 (иначе float32 теряет точность).
 import * as THREE from 'three';
 
 export const MAX_MASKS = 8;
@@ -55,6 +58,7 @@ const FRAG = /* glsl */`
   uniform float uThreshold;
   uniform float uSharpness;
   uniform float uThickness;
+  uniform float uDeform;
   uniform float uAmount;
   uniform vec3  uColor;
 
@@ -83,7 +87,6 @@ const FRAG = /* glsl */`
   uniform sampler2D uUvMask;
   uniform bool uUvMaskEnabled;
 
-  // ─── Triplanar ───
   uniform bool uTriplanarEnabled;
   uniform vec3 uModelMin;
   uniform vec3 uModelMax;
@@ -141,7 +144,6 @@ const FRAG = /* glsl */`
     return t;
   }
 
-  // ═══ Procedural Streaks — value_noise + fbm + stretch ═══
   float hash2i(int x, int y) {
     uint h = uint(x) * 374761393u + uint(y) * 668265263u;
     h = h * 1274126177u;
@@ -219,7 +221,6 @@ const FRAG = /* glsl */`
     return f;
   }
 
-  // Procedural streaks: считаем по любой UV (maskUv уже подготовлен)
   float proceduralStreaksBody(vec2 maskUv) {
     vec2 uvi = maskUv;
 
@@ -266,9 +267,9 @@ const FRAG = /* glsl */`
     float shifted = clamp(nFinal - thrEff, 0.0, 1.0);
     float window = 0.5 - uSharpness * 0.4;
     float e0 = 0.5 - window * 0.5;
-float e1 = 0.5 + window * 0.5;
-float tt = clamp((shifted - e0) / (e1 - e0), 0.0, 1.0);
-return tt * tt * (3.0 - 2.0 * tt);
+    float e1 = 0.5 + window * 0.5;
+    float tt = clamp((shifted - e0) / (e1 - e0), 0.0, 1.0);
+    return tt * tt * (3.0 - 2.0 * tt);
   }
 
   void main() {
@@ -280,7 +281,6 @@ return tt * tt * (3.0 - 2.0 * tt);
 
     vec2 uv = tiledUv;
 
-    // ─── Триплан: maskUv ───
     vec2 maskUv;
     if (uTriplanarEnabled) {
       vec3 p = (vWorldPos - uModelMin) / max(uModelMax - uModelMin, vec3(1e-6));
@@ -290,17 +290,17 @@ return tt * tt * (3.0 - 2.0 * tt);
       maskUv = uv;
     }
 
+    vec2 warpedUv = maskUv;
+    if (uDeform > 0.01 && !uProcedural) {
+      float nx = snoise2(maskUv * 3.0);
+      float ny = snoise2(maskUv * 3.0 + vec2(100.0, 100.0));
+      warpedUv += vec2(nx, ny) * 0.1 * uDeform;
+    }
+
     float body = 0.0;
     if (uProcedural && uShowProcedural) {
       body = proceduralStreaksBody(maskUv);
     } else if (!uProcedural) {
-      vec2 warpedUv = maskUv;
-      if (uWaviness > 0.01) {
-        float nx = snoise2(maskUv * 3.0);
-        float ny = snoise2(maskUv * 3.0 + vec2(100.0, 100.0));
-        warpedUv += vec2(nx, ny) * 0.1 * uWaviness;
-      }
-
       float best = 0.0;
       for (int i = 0; i < MAX_MASKS; i++) {
         if (i >= uInstanceCount) break;
@@ -333,16 +333,26 @@ return tt * tt * (3.0 - 2.0 * tt);
       nrm = normalize(nrm + texN * 0.5);
     }
 
-    if (uThickness > 0.01 && uAmount > 0.01 && !uProcedural) {
+    // Толщина — работает и в procedural, и в mask
+    if (abs(uThickness) > 0.01 && uAmount > 0.01) {
       float eps = 1.0 / 512.0;
       float bx1 = 0.0, bx2 = 0.0, by1 = 0.0, by2 = 0.0;
-      for (int i = 0; i < MAX_MASKS; i++) {
-        if (i >= uInstanceCount) break;
-        bx1 = max(bx1, sampleMask(i, maskUv + vec2(eps, 0.0)));
-        bx2 = max(bx2, sampleMask(i, maskUv - vec2(eps, 0.0)));
-        by1 = max(by1, sampleMask(i, maskUv + vec2(0.0, eps)));
-        by2 = max(by2, sampleMask(i, maskUv - vec2(0.0, eps)));
+
+      if (uProcedural && uShowProcedural) {
+        bx1 = proceduralStreaksBody(maskUv + vec2(eps, 0.0));
+        bx2 = proceduralStreaksBody(maskUv - vec2(eps, 0.0));
+        by1 = proceduralStreaksBody(maskUv + vec2(0.0, eps));
+        by2 = proceduralStreaksBody(maskUv - vec2(0.0, eps));
+      } else if (!uProcedural) {
+        for (int i = 0; i < MAX_MASKS; i++) {
+          if (i >= uInstanceCount) break;
+          bx1 = max(bx1, sampleMask(i, warpedUv + vec2(eps, 0.0)));
+          bx2 = max(bx2, sampleMask(i, warpedUv - vec2(eps, 0.0)));
+          by1 = max(by1, sampleMask(i, warpedUv + vec2(0.0, eps)));
+          by2 = max(by2, sampleMask(i, warpedUv - vec2(0.0, eps)));
+        }
       }
+
       float gx = (bx1 - bx2) * 8.0 * uThickness * gf;
       float gy = (by1 - by2) * 8.0 * uThickness * gf;
       if (uUvMaskEnabled) {
@@ -400,6 +410,7 @@ export function createStreaksMaterial(albedoTex, normalTex, roughTex) {
     uThreshold: { value: 0.2 },
     uSharpness: { value: 0.6 },
     uThickness: { value: 0.35 },
+    uDeform:    { value: 0.3 },
     uAmount:    { value: 0.9 },
     uColor:     { value: new THREE.Color(95/255, 85/255, 75/255) },
 
@@ -473,6 +484,7 @@ export function updateStreaksUniforms(material, opts) {
   u.uThreshold.value = opts.threshold ?? 0.2;
   u.uSharpness.value = opts.sharpness ?? 0.6;
   u.uThickness.value = opts.thickness ?? 0.35;
+  u.uDeform.value    = opts.deform ?? 0.3;
   u.uAmount.value    = opts.amount ?? 0.9;
 
   if (opts.color) {

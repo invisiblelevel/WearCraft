@@ -1,7 +1,8 @@
 // Шейдер для превью Dirt. Instances передаются снаружи (см. instances.js).
 // + Ограничение по геометрии через vNormal.
 // + UV-острова через uUvMask.
-// + Triplanar projection через vWorldPos.
+// + Triplanar projection через vWorldPos (с настраиваемой резкостью перехода).
+// + uBodyEnabled: при v>0 отключаем расчёт body.
 import * as THREE from 'three';
 
 export const MAX_MASKS = 8;
@@ -49,6 +50,8 @@ const FRAG = /* glsl */`
   uniform vec4 uInstA[8];
   uniform vec4 uInstB[8];
 
+  uniform bool uBodyEnabled;
+
   uniform float uThreshold;
   uniform float uSharpness;
   uniform float uDeform;
@@ -70,11 +73,11 @@ const FRAG = /* glsl */`
   uniform sampler2D uUvMask;
   uniform bool uUvMaskEnabled;
 
-  // ─── Triplanar ───
   uniform bool uTriplanarEnabled;
   uniform vec3 uModelMin;
   uniform vec3 uModelMax;
   uniform float uTriScale;
+  uniform float uTriBlendSharpness;
 
   vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
   vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
@@ -104,26 +107,22 @@ const FRAG = /* glsl */`
     return 130.0 * dot(m, g);
   }
 
-  // ─── Triplanar UV ───
-  // Возвращает [0..1] UV, вычисленные из world-pos и нормали.
-  // Логика 1-в-1 с Rust triplanar_uv.
-    vec2 triplanarUV(vec3 worldPos, vec3 nrm, float scale) {
+  vec2 triplanarUV(vec3 worldPos, vec3 nrm, float scale, float blendSharpness) {
     vec3 p = worldPos * scale;
     vec3 n = normalize(nrm);
     vec3 w = vec3(abs(n.x), abs(n.y), abs(n.z));
-    w = w * w * w * w;
+    float p_exp = clamp(blendSharpness, 0.5, 32.0);
+    w = pow(w, vec3(p_exp));
     float sum = max(w.x + w.y + w.z, 1e-6);
     w /= sum;
 
-    vec2 uv_x = p.yz;  // проекция по X
-    vec2 uv_y = p.xz;  // проекция по Y
-    vec2 uv_z = p.xy;  // проекция по Z
+    vec2 uv_x = p.yz;
+    vec2 uv_y = p.xz;
+    vec2 uv_z = p.xy;
 
     return uv_x * w.x + uv_y * w.y + uv_z * w.z;
   }
 
-  // Конвертит triplanar UV (в диапазоне [0..scale]) в UV-координаты шейдера
-  // для сэмплинга масок. Умножаем на repeat, крутим по rotation — как обычно.
   vec2 triplanarMaskUV(vec2 triUV, vec2 repeat, float rotation) {
     vec2 t = triUV - 0.5;
     float cs = cos(-rotation);
@@ -157,6 +156,9 @@ const FRAG = /* glsl */`
     r.y *= b.y;
     vec2 m = r + 0.5;
     if (b.z < 0.5) {
+      if (uTriplanarEnabled) {
+        return pickMask(i, clamp(m, 0.0, 1.0)).r;
+      }
       if (m.x < 0.0 || m.x > 1.0 || m.y < 0.0 || m.y > 1.0) return 0.0;
       return pickMask(i, m).r;
     }
@@ -193,17 +195,15 @@ const FRAG = /* glsl */`
 
     vec2 uv = tiledUv;
 
-    // ─── Триплан: сэмплируем маски по triplanar-UV ───
     vec2 maskUv;
     if (uTriplanarEnabled) {
       vec3 p = (vWorldPos - uModelMin) / max(uModelMax - uModelMin, vec3(1e-6));
-      vec2 tri = triplanarUV(p, vNormal, uTriScale);
+      vec2 tri = triplanarUV(p, vNormal, uTriScale, uTriBlendSharpness);
       maskUv = triplanarMaskUV(tri, uRepeat, uRotation);
     } else {
       maskUv = uv;
     }
 
-    // deform (warp) применяется к maskUv
     vec2 warpedUv = maskUv;
     if (uDeform > 0.01) {
       float nx = snoise2(maskUv * 3.0);
@@ -211,21 +211,24 @@ const FRAG = /* glsl */`
       warpedUv += vec2(nx, ny) * 0.1 * uDeform;
     }
 
-    float best = 0.0;
-    for (int i = 0; i < MAX_MASKS; i++) {
-      if (i >= uInstanceCount) break;
-      float v = sampleMask(i, warpedUv);
-      best = max(best, v);
-    }
+    float body = 0.0;
+    if (uBodyEnabled) {
+      float best = 0.0;
+      for (int i = 0; i < MAX_MASKS; i++) {
+        if (i >= uInstanceCount) break;
+        float v = sampleMask(i, warpedUv);
+        best = max(best, v);
+      }
 
-    float shifted = clamp(best - uThreshold * 0.5, 0.0, 1.0);
-    float window = 0.5 - uSharpness * 0.4;
-    float body = smoothstep(0.5 - window * 0.5, 0.5 + window * 0.5, shifted);
+      float shifted = clamp(best - uThreshold * 0.5, 0.0, 1.0);
+      float window = 0.5 - uSharpness * 0.4;
+      body = smoothstep(0.5 - window * 0.5, 0.5 + window * 0.5, shifted);
+    }
 
     float gf = geoFactor();
     body *= gf;
 
-    if (uUvMaskEnabled) {
+    if (uUvMaskEnabled && !uTriplanarEnabled) {
       float uv_m = texture2D(uUvMask, uv).r;
       body *= uv_m;
     }
@@ -241,7 +244,7 @@ const FRAG = /* glsl */`
       nrm = normalize(nrm + texN * 0.5);
     }
 
-    if (uThickness > 0.01 && uAmount > 0.01) {
+    if (abs(uThickness) > 0.01 && uAmount > 0.01 && uBodyEnabled) {
       float eps = 1.0 / 512.0;
       float bx1 = 0.0, bx2 = 0.0, by1 = 0.0, by2 = 0.0;
       for (int i = 0; i < MAX_MASKS; i++) {
@@ -253,7 +256,7 @@ const FRAG = /* glsl */`
       }
       float gx = (bx1 - bx2) * 8.0 * uThickness * gf;
       float gy = (by1 - by2) * 8.0 * uThickness * gf;
-      if (uUvMaskEnabled) {
+      if (uUvMaskEnabled && !uTriplanarEnabled) {
         float uv_m = texture2D(uUvMask, uv).r;
         gx *= uv_m;
         gy *= uv_m;
@@ -303,6 +306,8 @@ export function createDirtMaterial(albedoTex, normalTex, roughTex) {
     uInstA: { value: Array.from({ length: 8 }, () => new THREE.Vector4()) },
     uInstB: { value: Array.from({ length: 8 }, () => new THREE.Vector4()) },
 
+    uBodyEnabled: { value: true },
+
     uThreshold: { value: 0.5 },
     uSharpness: { value: 0.5 },
     uDeform:    { value: 0.3 },
@@ -324,10 +329,11 @@ export function createDirtMaterial(albedoTex, normalTex, roughTex) {
     uUvMask:        { value: null },
     uUvMaskEnabled: { value: false },
 
-    uTriplanarEnabled: { value: false },
-    uModelMin:         { value: new THREE.Vector3(-0.5, -0.5, -0.5) },
-    uModelMax:         { value: new THREE.Vector3(0.5, 0.5, 0.5) },
-    uTriScale:         { value: 2.0 },
+    uTriplanarEnabled:     { value: false },
+    uModelMin:             { value: new THREE.Vector3(-0.5, -0.5, -0.5) },
+    uModelMax:             { value: new THREE.Vector3(0.5, 0.5, 0.5) },
+    uTriScale:             { value: 2.0 },
+    uTriBlendSharpness:    { value: 8.0 },
   };
 
   return new THREE.ShaderMaterial({
@@ -362,6 +368,8 @@ export function updateDirtUniforms(material, opts) {
     u.uInstA.value[i].set(it.offsetX, it.offsetY, it.scale, it.rotation);
     u.uInstB.value[i].set(it.flipX, it.flipY, (it.tileable === false) ? 0.0 : 1.0, 0);
   }
+
+  if (opts.bodyEnabled !== undefined) u.uBodyEnabled.value = !!opts.bodyEnabled;
 
   u.uThreshold.value = opts.threshold ?? 0.5;
   u.uSharpness.value = opts.sharpness ?? 0.5;
@@ -399,9 +407,9 @@ export function updateDirtUniforms(material, opts) {
     u.uUvMaskEnabled.value = !!opts.uvMask;
   }
 
-  // Triplanar
   if (opts.triplanarEnabled !== undefined) u.uTriplanarEnabled.value = !!opts.triplanarEnabled;
   if (opts.modelMin) u.uModelMin.value.set(opts.modelMin[0], opts.modelMin[1], opts.modelMin[2]);
   if (opts.modelMax) u.uModelMax.value.set(opts.modelMax[0], opts.modelMax[1], opts.modelMax[2]);
   if (opts.triScale !== undefined) u.uTriScale.value = opts.triScale;
+  if (opts.triBlendSharpness !== undefined) u.uTriBlendSharpness.value = opts.triBlendSharpness;
 }

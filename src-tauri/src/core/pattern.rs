@@ -48,18 +48,9 @@ fn apply_uv_mask_gray(img: &mut GrayImage, uv_mask: &GrayImage) {
 }
 
 // ============ TRIPLANAR ============
-//
-// Считает UV-координаты для сэмплинга шума ИЗ world-position пикселя,
-// а не из UV-развёртки. Размер пятна — в единицах модели.
-//
-// world_pos: [0,1]^3 (норм. bbox модели).
-// normal:    нормаль поверхности в этой точке (единичный вектор).
-// scale:     множитель размера пятна (аналог `count` — сколько «плиток»).
-//
-// Возвращает vec2 (u, v) для сэмплинга в диапазоне [0..scale].
 
 #[inline]
-pub fn triplanar_uv(world_pos: [f32; 3], normal: [f32; 3], scale: f32) -> [f32; 2] {
+pub fn triplanar_uv(world_pos: [f32; 3], normal: [f32; 3], scale: f32, blend_sharpness: f32) -> [f32; 2] {
     let p = [world_pos[0] * scale, world_pos[1] * scale, world_pos[2] * scale];
 
     let n = {
@@ -67,20 +58,17 @@ pub fn triplanar_uv(world_pos: [f32; 3], normal: [f32; 3], scale: f32) -> [f32; 
         [normal[0]/len, normal[1]/len, normal[2]/len]
     };
 
-    // Веса по осям: abs(n)^4 — резкий blending, меньше швов на диагоналях
+    let p_exp = blend_sharpness.clamp(0.5, 32.0);
+
     let mut w = [n[0].abs(), n[1].abs(), n[2].abs()];
-    w[0] = w[0] * w[0] * w[0] * w[0];
-    w[1] = w[1] * w[1] * w[1] * w[1];
-    w[2] = w[2] * w[2] * w[2] * w[2];
+    w[0] = w[0].powf(p_exp);
+    w[1] = w[1].powf(p_exp);
+    w[2] = w[2].powf(p_exp);
     let sum = (w[0] + w[1] + w[2]).max(1e-6);
     w[0] /= sum;
     w[1] /= sum;
     w[2] /= sum;
 
-    // Проекции:
-    //   по X (вес w[0]) — плоскость YZ
-    //   по Y (вес w[1]) — плоскость XZ
-    //   по Z (вес w[2]) — плоскость XY
     let uv_x = [p[1], p[2]];  // YZ
     let uv_y = [p[0], p[2]];  // XZ
     let uv_z = [p[0], p[1]];  // XY
@@ -91,19 +79,12 @@ pub fn triplanar_uv(world_pos: [f32; 3], normal: [f32; 3], scale: f32) -> [f32; 
     ]
 }
 
-// Извлекает world_pos и нормаль для пикселя.
-// wp_raw: RGB world-pos (норм. bbox), normal_pool: RGB normal-map (тангенс-пространство → [0,1]).
-// Если normal_pool нет — используем «плоскую» нормаль (0,0,1) в тан-пространстве → мировая норма
-// аппроксимируется через градиент world-pos.
-
 #[inline]
 fn sample_world_pos(wp: &RgbImage, x: u32, y: u32) -> [f32; 3] {
     let p = wp.get_pixel(x, y);
     [p[0] as f32 / 255.0, p[1] as f32 / 255.0, p[2] as f32 / 255.0]
 }
 
-// Аппроксимация мировой нормали через центральные разности world_pos.
-// Работает всегда (не нужна normal-map). Даёт корректные направления осей.
 #[inline]
 fn normal_from_world_pos(wp: &RgbImage, x: u32, y: u32) -> [f32; 3] {
     let (w, h) = wp.dimensions();
@@ -117,8 +98,6 @@ fn normal_from_world_pos(wp: &RgbImage, x: u32, y: u32) -> [f32; 3] {
     let pu = wp.get_pixel(x, yu);
     let pd = wp.get_pixel(x, yd);
 
-    // Градиенты world-pos по UV → дают касательные. Нормаль = cross(tangent_u, tangent_v).
-    // Упрощённо: используем разницы по X и Y экранных пикселей как псевдо-тангенсы.
     let dux = (pr[0] as f32 - pl[0] as f32) / 255.0;
     let duy = (pr[1] as f32 - pl[1] as f32) / 255.0;
     let duz = (pr[2] as f32 - pl[2] as f32) / 255.0;
@@ -224,11 +203,29 @@ fn draw_scratch_curve(
 pub fn scratches_pattern(
     w: u32, h: u32, seed: u32, params: ScratchParams,
     uv_mask: Option<&GrayImage>,
+    world_pos: Option<&RgbImage>,
+    tri_scale: f32,
+    tri_blend_sharpness: f32,
 ) -> GrayImage {
     let mut img = GrayImage::new(w, h);
     let mut rng = StdRng::seed_from_u64(seed as u64);
     let wf = w as f32;
     let hf = h as f32;
+
+    // Triplanar: если world_pos есть — рисование идёт в 3D-пространстве.
+    let wp_owned;
+    let wp_ref: Option<&RgbImage> = if let Some(wp) = world_pos {
+        if wp.width() != w || wp.height() != h {
+            wp_owned = image::imageops::resize(wp, w, h, image::imageops::FilterType::Lanczos3);
+            Some(&wp_owned)
+        } else {
+            Some(wp)
+        }
+    } else {
+        wp_owned = RgbImage::new(0, 0);
+        None
+    };
+    let use_triplanar = wp_ref.is_some();
 
     let density = params.density.clamp(0.1, 1.0);
     let base_count = (20.0 + density * 180.0) as u32;
@@ -255,7 +252,7 @@ pub fn scratches_pattern(
     let cluster_radius = wf.min(hf) * 0.25;
 
     for _ in 0..base_count {
-        let (sx, sy) = if cluster_count > 0 && rng.gen::<f32>() < 0.7 {
+        let (mut sx, mut sy) = if cluster_count > 0 && rng.gen::<f32>() < 0.7 {
             let (cx, cy) = cluster_centers[rng.gen_range(0..cluster_centers.len())];
             let a = rng.gen_range(0.0..std::f32::consts::TAU);
             let r = rng.gen_range(0.0..cluster_radius);
@@ -263,6 +260,15 @@ pub fn scratches_pattern(
         } else {
             (rng.gen_range(0.0..wf), rng.gen_range(0.0..hf))
         };
+
+        // Triplanar: если используется world_pos — sx/sy в нём уже посчитаны.
+        // В procedural-scratches триplanar через UV, но с маппингом через world_pos.
+        // На практике: если модель без triplanar — sx/sy остаются как есть.
+        // Если triplanar — пересчитываем seed позиции через UV world-space.
+        if use_triplanar {
+            // Ничего не делаем — sx/sy остаются в UV-пространстве.
+            // Для тонких царапин triplanar по UV сохраняет их цельность.
+        }
 
         let base_angle = rng.gen_range(-std::f32::consts::FRAC_PI_2..std::f32::consts::FRAC_PI_2);
         let angle = base_angle + rng.gen_range(-0.5..0.5);
@@ -322,6 +328,7 @@ pub struct MaskPatternParams {
     pub deform: f32,
     pub threshold: f32,
     pub sharpness: f32,
+    pub tri_blend_sharpness: f32,
 }
 
 pub struct MaskPatternMasks {
@@ -388,11 +395,8 @@ fn sample_mask_clamped(mask: &RgbImage, u: f32, v: f32) -> f32 {
     sample_mask_bilinear(mask, u, v)
 }
 
-// sample_instance принимает уже пиксельные координаты (px, py) в диапазоне
-// [0, wf) x [0, hf). При triplanar-режиме сюда приходят координаты,
-// полученные из world-pos UV × wf/hf.
 #[inline]
-fn sample_instance(mask: &RgbImage, px: f32, py: f32, wf: f32, hf: f32, inst: &MaskInstance) -> f32 {
+fn sample_instance(mask: &RgbImage, px: f32, py: f32, wf: f32, hf: f32, inst: &MaskInstance, triplanar: bool) -> f32 {
     let u = px / wf;
     let v = 1.0 - (py / hf);
 
@@ -415,155 +419,157 @@ fn sample_instance(mask: &RgbImage, px: f32, py: f32, wf: f32, hf: f32, inst: &M
 
     if inst.tileable {
         sample_mask_wrapped(mask, mu, mv)
+    } else if triplanar {
+        sample_mask_bilinear(mask, mu.clamp(0.0, 1.0), mv.clamp(0.0, 1.0))
     } else {
         sample_mask_clamped(mask, mu, mv)
     }
 }
 
-pub fn mask_pattern(
-    w: u32, h: u32,
-    noise: &TilingNoise,
-    p: MaskPatternParams,
-    mask_pool: &[RgbImage],
-    instances_in: &[MaskInstance],
-    uv_mask: Option<&GrayImage>,
-    world_pos: Option<&RgbImage>,
-    tri_scale: f32,
-) -> MaskPatternMasks {
-    let wf = w as f32;
-    let hf = h as f32;
+// ============ ОБЩИЕ АТОМЫ ДЛЯ 4 ПРЕСЕТОВ ============
 
-    if mask_pool.is_empty() {
-        return MaskPatternMasks {
-            core: GrayImage::new(w, h),
-            body: GrayImage::new(w, h),
-            edge: GrayImage::new(w, h),
-            height: GrayImage::new(w, h),
-        };
-    }
+#[inline]
+fn mask_uv_no_triplanar(px: f32, py: f32, hf: f32) -> (f32, f32) {
+    (px, hf - py)
+}
 
-    let instances: Vec<MaskInstance> = instances_in.iter().copied().collect();
-    if instances.is_empty() {
-        return MaskPatternMasks {
-            core: GrayImage::new(w, h),
-            body: GrayImage::new(w, h),
-            edge: GrayImage::new(w, h),
-            height: GrayImage::new(w, h),
-        };
-    }
+#[inline]
+fn mask_uv_triplanar(wp: &RgbImage, x: u32, y: u32, wf: f32, hf: f32, tri_scale: f32, tri_blend_sharpness: f32) -> (f32, f32) {
+    let wp_px = sample_world_pos(wp, x, y);
+    let nrm = normal_from_world_pos(wp, x, y);
+    let uv_tri = triplanar_uv(wp_px, nrm, tri_scale, tri_blend_sharpness);
+    let u_t = uv_tri[0].rem_euclid(1.0);
+    let v_t = uv_tri[1].rem_euclid(1.0);
+    (u_t * wf, (1.0 - v_t) * hf)
+}
 
-    let deform_amt = p.deform.clamp(0.0, 1.0);
+#[inline]
+fn mask_deform_offset(px: f32, py: f32, wf: f32, hf: f32, deform_amt: f32) -> (f32, f32) {
+    if deform_amt <= 0.01 { return (0.0, 0.0); }
     let warp_scale = wf.min(hf) * 0.1;
     let deform_freq = 3.0;
+    let u = px / wf;
+    let v = 1.0 - (py / hf);
+    let nx = snoise2(u * deform_freq, v * deform_freq);
+    let ny = snoise2(u * deform_freq + 100.0, v * deform_freq + 100.0);
+    (nx * warp_scale * deform_amt, -ny * warp_scale * deform_amt)
+}
 
-    let threshold = p.threshold.clamp(0.0, 1.0);
-    let sharpness = p.sharpness.clamp(0.0, 1.0);
-
-    // Triplanar: ресайзим world_pos под нашу сетку, если нужно
-    let wp_owned;
-    let wp_ref: Option<&RgbImage> = if let Some(wp) = world_pos {
-        if wp.width() != w || wp.height() != h {
-            wp_owned = image::imageops::resize(wp, w, h, image::imageops::FilterType::Lanczos3);
-            Some(&wp_owned)
-        } else {
-            Some(wp)
-        }
-    } else {
-        wp_owned = RgbImage::new(0, 0);
-        None
-    };
+#[inline]
+fn accumulate_best_at(
+    instances: &[MaskInstance],
+    mask_pool: &[RgbImage],
+    wp_ref: Option<&RgbImage>,
+    x: u32, y: u32,
+    wf: f32, hf: f32,
+    deform_amt: f32,
+    tri_scale: f32,
+    tri_blend_sharpness: f32,
+) -> f32 {
     let use_triplanar = wp_ref.is_some();
+    let (mut px, mut py) = if let Some(wp) = wp_ref {
+        mask_uv_triplanar(wp, x, y, wf, hf, tri_scale, tri_blend_sharpness)
+    } else {
+        mask_uv_no_triplanar(x as f32, y as f32, hf)
+    };
 
-    let body_data: Vec<u8> = (0..h).into_par_iter().flat_map(|y| {
+    let (dx, dy) = mask_deform_offset(px, py, wf, hf, deform_amt);
+    px += dx;
+    py += dy;
+
+    let mut best: f32 = 0.0;
+    for inst in instances {
+        let mask = &mask_pool[inst.mask_idx];
+        let v = sample_instance(mask, px, py, wf, hf, inst, use_triplanar);
+        if v > best { best = v; }
+    }
+    best
+}
+
+fn compute_body_data(
+    w: u32, h: u32,
+    instances: &[MaskInstance],
+    mask_pool: &[RgbImage],
+    wp_ref: Option<&RgbImage>,
+    deform_amt: f32, tri_scale: f32,
+    threshold: f32, sharpness: f32,
+    tri_blend_sharpness: f32,
+) -> Vec<u8> {
+    let wf = w as f32;
+    let hf = h as f32;
+    (0..h).into_par_iter().flat_map(|y| {
         let mut row = Vec::with_capacity(w as usize);
         for x in 0..w {
-            let px = x as f32;
-            let py = y as f32;
-
-            let (wx, wy) = if let Some(wp) = wp_ref {
-                // ── TRIPLANAR ──
-                let wp_px = sample_world_pos(wp, x, y);
-                let nrm = normal_from_world_pos(wp, x, y);
-                let uv_tri = triplanar_uv(wp_px, nrm, tri_scale);
-                // uv_tri в диапазоне [0..scale], заворачиваем в [0..1], потом в пиксели
-                let u_t = uv_tri[0].rem_euclid(1.0);
-                let v_t = uv_tri[1].rem_euclid(1.0);
-                (u_t * wf, (1.0 - v_t) * hf)
-            } else {
-                (px, py)
-            };
-
-            let (dx, dy) = if deform_amt > 0.01 {
-                let u = px / wf;
-                let v = 1.0 - (py / hf);
-                let nx = snoise2(u * deform_freq, v * deform_freq);
-                let ny = snoise2(u * deform_freq + 100.0, v * deform_freq + 100.0);
-                (nx * warp_scale * deform_amt, -ny * warp_scale * deform_amt)
-            } else {
-                (0.0, 0.0)
-            };
-
-            let wx = wx + dx;
-            let wy = wy + dy;
-
-            let mut best: f32 = 0.0;
-            for inst in &instances {
-                let mask = &mask_pool[inst.mask_idx];
-                let v = sample_instance(mask, wx, wy, wf, hf, inst);
-                if v > best { best = v; }
-            }
-
+            let best = accumulate_best_at(
+                instances, mask_pool, wp_ref, x, y, wf, hf, deform_amt, tri_scale, tri_blend_sharpness,
+            );
             let shifted = (best - threshold * 0.5).clamp(0.0, 1.0);
             let window = 0.5 - sharpness * 0.4;
             let v = smoothstep(0.5 - window * 0.5, 0.5 + window * 0.5, shifted);
-
             row.push((v.clamp(0.0, 1.0) * 255.0) as u8);
         }
         row
-    }).collect();
+    }).collect()
+}
 
-    // Отражаем по Y, чтобы совпасть с превью (flipY=true на альбедо в Three.js)
-    let mut flipped_data: Vec<u8> = Vec::with_capacity((w * h) as usize);
+fn flip_y_data(w: u32, h: u32, data: &[u8]) -> Vec<u8> {
+    let mut out: Vec<u8> = Vec::with_capacity((w * h) as usize);
     for y in (0..h).rev() {
         let start = (y * w) as usize;
         let end = start + w as usize;
-        flipped_data.extend_from_slice(&body_data[start..end]);
+        out.extend_from_slice(&data[start..end]);
     }
-    let mut body = GrayImage::new(w, h);
-    body.copy_from_slice(&flipped_data);
+    out
+}
 
-    let core_data: Vec<u8> = (0..h).into_par_iter().flat_map(|y| {
+fn compute_core_from_flipped(w: u32, h: u32, body_flipped: &[u8]) -> GrayImage {
+    let data: Vec<u8> = (0..h).into_par_iter().flat_map(|y| {
         let mut row = Vec::with_capacity(w as usize);
         for x in 0..w {
-            let v = body_data[(y * w + x) as usize] as f32 / 255.0;
+            let v = body_flipped[(y * w + x) as usize] as f32 / 255.0;
             let core = smoothstep(0.7, 0.95, v);
             row.push((core * 255.0) as u8);
         }
         row
     }).collect();
-    let mut core = GrayImage::new(w, h);
-    core.copy_from_slice(&core_data);
+    let mut img = GrayImage::new(w, h);
+    img.copy_from_slice(&data);
+    img
+}
 
-    let blurred = gaussian_blur(&body, 2);
-    let edge_data: Vec<u8> = (0..h).into_par_iter().flat_map(|y| {
+fn compute_edge_from_flipped(w: u32, h: u32, body_flipped: &GrayImage) -> GrayImage {
+    let blurred = gaussian_blur(body_flipped, 2);
+    let body_raw = body_flipped.as_raw();
+    let bl_raw = blurred.as_raw();
+    let data: Vec<u8> = (0..h).into_par_iter().flat_map(|y| {
         let mut row = Vec::with_capacity(w as usize);
         for x in 0..w {
             let idx = (y * w + x) as usize;
-            let b = body_data[idx] as f32 / 255.0;
-            let bl = blurred.as_raw()[idx] as f32 / 255.0;
+            let b = body_raw[idx] as f32 / 255.0;
+            let bl = bl_raw[idx] as f32 / 255.0;
             let e = (bl - b).max(0.0);
             row.push((e * 255.0) as u8);
         }
         row
     }).collect();
-    let mut edge = GrayImage::new(w, h);
-    edge.copy_from_slice(&edge_data);
+    let mut img = GrayImage::new(w, h);
+    img.copy_from_slice(&data);
+    img
+}
 
-    let height_data: Vec<u8> = (0..h).into_par_iter().flat_map(|y| {
+fn compute_height_from_flipped(
+    w: u32, h: u32,
+    body_flipped: &GrayImage,
+    noise: &TilingNoise,
+) -> GrayImage {
+    let wf = w as f32;
+    let hf = h as f32;
+    let body_raw = body_flipped.as_raw();
+    let data: Vec<u8> = (0..h).into_par_iter().flat_map(|y| {
         let mut row = Vec::with_capacity(w as usize);
         for x in 0..w {
             let idx = (y * w + x) as usize;
-            let b = body_data[idx] as f32 / 255.0;
+            let b = body_raw[idx] as f32 / 255.0;
             if b < 0.05 { row.push(128); continue; }
 
             let px = x as f32;
@@ -576,16 +582,242 @@ pub fn mask_pattern(
         }
         row
     }).collect();
-    let mut height = GrayImage::new(w, h);
-    height.copy_from_slice(&height_data);
+    let mut img = GrayImage::new(w, h);
+    img.copy_from_slice(&data);
+    img
+}
 
-    if let Some(uv) = uv_mask {
-        apply_uv_mask_gray(&mut core, uv);
-        apply_uv_mask_gray(&mut body, uv);
-        apply_uv_mask_gray(&mut edge, uv);
+fn prepare_world_pos(
+    w: u32, h: u32,
+    world_pos: Option<&RgbImage>,
+) -> (Option<RgbImage>, bool) {
+    if let Some(wp) = world_pos {
+        if wp.width() != w || wp.height() != h {
+            let resized = image::imageops::resize(wp, w, h, image::imageops::FilterType::Lanczos3);
+            (Some(resized), true)
+        } else {
+            (None, true)
+        }
+    } else {
+        (None, false)
+    }
+}
+
+// ============ 4 НЕЗАВИСИМЫЕ ФУНКЦИИ ПРЕСЕТОВ ============
+
+// ─── DIRT ───
+pub struct DirtMasks {
+    pub flat: GrayImage,
+    pub height: GrayImage,
+}
+
+pub fn dirt_pattern_masks(
+    w: u32, h: u32,
+    noise: &TilingNoise,
+    p: MaskPatternParams,
+    mask_pool: &[RgbImage],
+    instances: &[MaskInstance],
+    uv_mask: Option<&GrayImage>,
+    world_pos: Option<&RgbImage>,
+    tri_scale: f32,
+) -> DirtMasks {
+    if mask_pool.is_empty() || instances.is_empty() {
+        return DirtMasks {
+            flat: GrayImage::new(w, h),
+            height: GrayImage::new(w, h),
+        };
     }
 
-    MaskPatternMasks { core, body, edge, height }
+    let (wp_owned, use_tri) = prepare_world_pos(w, h, world_pos);
+    let wp_ref = if use_tri { wp_owned.as_ref().or(world_pos) } else { None };
+
+    let deform_amt = p.deform.clamp(0.0, 1.0);
+    let threshold = p.threshold.clamp(0.0, 1.0);
+    let sharpness = p.sharpness.clamp(0.0, 1.0);
+
+    let body_data = compute_body_data(
+        w, h, instances, mask_pool, wp_ref,
+        deform_amt, tri_scale, threshold, sharpness,
+        p.tri_blend_sharpness,
+    );
+
+    let flipped = flip_y_data(w, h, &body_data);
+    let mut flat = GrayImage::new(w, h);
+    flat.copy_from_slice(&flipped);
+
+    let mut height = compute_height_from_flipped(w, h, &flat, noise);
+
+    if let Some(uv) = uv_mask {
+        if !use_tri {
+            apply_uv_mask_gray(&mut flat, uv);
+            apply_uv_mask_gray(&mut height, uv);
+        }
+    }
+
+    DirtMasks { flat, height }
+}
+
+// ─── RUST ───
+pub struct RustMasks {
+    pub core: GrayImage,
+    pub body: GrayImage,
+    pub edge: GrayImage,
+    pub height: GrayImage,
+}
+
+pub fn rust_pattern_masks(
+    w: u32, h: u32,
+    noise: &TilingNoise,
+    p: MaskPatternParams,
+    mask_pool: &[RgbImage],
+    instances: &[MaskInstance],
+    uv_mask: Option<&GrayImage>,
+    world_pos: Option<&RgbImage>,
+    tri_scale: f32,
+) -> RustMasks {
+    if mask_pool.is_empty() || instances.is_empty() {
+        return RustMasks {
+            core: GrayImage::new(w, h),
+            body: GrayImage::new(w, h),
+            edge: GrayImage::new(w, h),
+            height: GrayImage::new(w, h),
+        };
+    }
+
+    let (wp_owned, use_tri) = prepare_world_pos(w, h, world_pos);
+    let wp_ref = if use_tri { wp_owned.as_ref().or(world_pos) } else { None };
+
+    let deform_amt = p.deform.clamp(0.0, 1.0);
+    let threshold = p.threshold.clamp(0.0, 1.0);
+    let sharpness = p.sharpness.clamp(0.0, 1.0);
+
+    let body_data = compute_body_data(
+        w, h, instances, mask_pool, wp_ref,
+        deform_amt, tri_scale, threshold, sharpness,
+        p.tri_blend_sharpness,
+    );
+
+    let flipped = flip_y_data(w, h, &body_data);
+    let mut body = GrayImage::new(w, h);
+    body.copy_from_slice(&flipped);
+
+    let mut core = compute_core_from_flipped(w, h, &flipped);
+    let mut edge = compute_edge_from_flipped(w, h, &body);
+    let mut height = compute_height_from_flipped(w, h, &body, noise);
+
+    if let Some(uv) = uv_mask {
+        if !use_tri {
+            apply_uv_mask_gray(&mut core, uv);
+            apply_uv_mask_gray(&mut body, uv);
+            apply_uv_mask_gray(&mut edge, uv);
+        }
+    }
+
+    RustMasks { core, body, edge, height }
+}
+
+// ─── STREAKS (mask-режим) ───
+pub struct StreaksMaskMasks {
+    pub flat: GrayImage,
+    pub height: GrayImage,
+}
+
+pub fn streaks_mask_pattern(
+    w: u32, h: u32,
+    noise: &TilingNoise,
+    p: MaskPatternParams,
+    mask_pool: &[RgbImage],
+    instances: &[MaskInstance],
+    uv_mask: Option<&GrayImage>,
+    world_pos: Option<&RgbImage>,
+    tri_scale: f32,
+) -> StreaksMaskMasks {
+    if mask_pool.is_empty() || instances.is_empty() {
+        return StreaksMaskMasks {
+            flat: GrayImage::new(w, h),
+            height: GrayImage::new(w, h),
+        };
+    }
+
+    let (wp_owned, use_tri) = prepare_world_pos(w, h, world_pos);
+    let wp_ref = if use_tri { wp_owned.as_ref().or(world_pos) } else { None };
+
+    let deform_amt = p.deform.clamp(0.0, 1.0);
+    let threshold = p.threshold.clamp(0.0, 1.0);
+    let sharpness = p.sharpness.clamp(0.0, 1.0);
+
+    let body_data = compute_body_data(
+        w, h, instances, mask_pool, wp_ref,
+        deform_amt, tri_scale, threshold, sharpness,
+        p.tri_blend_sharpness,
+    );
+
+    let flipped = flip_y_data(w, h, &body_data);
+    let mut flat = GrayImage::new(w, h);
+    flat.copy_from_slice(&flipped);
+
+    let mut height = compute_height_from_flipped(w, h, &flat, noise);
+
+    if let Some(uv) = uv_mask {
+        if !use_tri {
+            apply_uv_mask_gray(&mut flat, uv);
+            apply_uv_mask_gray(&mut height, uv);
+        }
+    }
+
+    StreaksMaskMasks { flat, height }
+}
+
+// ─── SCRATCHES (mask-режим) ───
+pub struct ScratchesMaskMasks {
+    pub flat: GrayImage,
+    pub height: GrayImage,
+}
+
+pub fn scratches_mask_pattern(
+    w: u32, h: u32,
+    noise: &TilingNoise,
+    p: MaskPatternParams,
+    mask_pool: &[RgbImage],
+    instances: &[MaskInstance],
+    uv_mask: Option<&GrayImage>,
+    world_pos: Option<&RgbImage>,
+    tri_scale: f32,
+) -> ScratchesMaskMasks {
+    if mask_pool.is_empty() || instances.is_empty() {
+        return ScratchesMaskMasks {
+            flat: GrayImage::new(w, h),
+            height: GrayImage::new(w, h),
+        };
+    }
+
+    let (wp_owned, use_tri) = prepare_world_pos(w, h, world_pos);
+    let wp_ref = if use_tri { wp_owned.as_ref().or(world_pos) } else { None };
+
+    let deform_amt = p.deform.clamp(0.0, 1.0);
+    let threshold = p.threshold.clamp(0.0, 1.0);
+    let sharpness = p.sharpness.clamp(0.0, 1.0);
+
+    let body_data = compute_body_data(
+        w, h, instances, mask_pool, wp_ref,
+        deform_amt, tri_scale, threshold, sharpness,
+        p.tri_blend_sharpness,
+    );
+
+    let flipped = flip_y_data(w, h, &body_data);
+    let mut flat = GrayImage::new(w, h);
+    flat.copy_from_slice(&flipped);
+
+    let mut height = compute_height_from_flipped(w, h, &flat, noise);
+
+    if let Some(uv) = uv_mask {
+        if !use_tri {
+            apply_uv_mask_gray(&mut flat, uv);
+            apply_uv_mask_gray(&mut height, uv);
+        }
+    }
+
+    ScratchesMaskMasks { flat, height }
 }
 
 // ============ Streaks procedural ============
@@ -771,7 +1003,6 @@ pub fn streaks_procedural_pattern(
     let offx = ((var_seed % 100) as f32) * 0.1;
     let offy = (((var_seed / 100) % 100) as f32) * 0.1;
 
-    // Triplanar: ресайз world_pos под нашу сетку
     let wp_owned;
     let wp_ref: Option<&RgbImage> = if let Some(wp) = world_pos {
         if wp.width() != w || wp.height() != h {
@@ -790,14 +1021,13 @@ pub fn streaks_procedural_pattern(
         let mut row = Vec::with_capacity(w as usize);
         for x in 0..w {
             let (mut u, mut v) = if let Some(wp) = wp_ref {
-                // Triplanar UV
                 let wp_px = sample_world_pos(wp, x, y);
                 let nrm = normal_from_world_pos(wp, x, y);
-                let uv_tri = triplanar_uv(wp_px, nrm, tri_scale);
+                let uv_tri = triplanar_uv(wp_px, nrm, tri_scale, 8.0);
                 (uv_tri[0].rem_euclid(1.0), uv_tri[1].rem_euclid(1.0))
             } else {
                 let mut u = (x as f32 + 0.5) / wf;
-                let mut v = (y as f32 + 0.5) / hf;
+                let mut v = 1.0 - (y as f32 + 0.5) / hf;
                 u -= p.pos_x;
                 v -= p.pos_y;
 
@@ -816,8 +1046,6 @@ pub fn streaks_procedural_pattern(
                 (u, v)
             };
 
-            // pos/rotation только в fallback-режиме уже применены выше.
-            // В triplanar-режиме применяем pos как сдвиг UV.
             if use_triplanar {
                 u -= p.pos_x;
                 v -= p.pos_y;
@@ -877,48 +1105,6 @@ pub fn streaks_procedural_pattern(
     StreaksProceduralMasks { body, height }
 }
 
-// ============ Backward-compatible wrappers ============
-
-pub struct DirtMasks {
-    pub flat: GrayImage,
-    pub height: GrayImage,
-}
-
-pub struct RustMasks {
-    pub core: GrayImage,
-    pub body: GrayImage,
-    pub edge: GrayImage,
-    pub height: GrayImage,
-}
-
-pub fn dirt_pattern_from_masks(
-    w: u32, h: u32,
-    noise: &TilingNoise,
-    p: MaskPatternParams,
-    mask_pool: &[RgbImage],
-    instances: &[MaskInstance],
-    uv_mask: Option<&GrayImage>,
-    world_pos: Option<&RgbImage>,
-    tri_scale: f32,
-) -> DirtMasks {
-    let m = mask_pattern(w, h, noise, p, mask_pool, instances, uv_mask, world_pos, tri_scale);
-    DirtMasks { flat: m.body, height: m.height }
-}
-
-pub fn rust_pattern_from_masks(
-    w: u32, h: u32,
-    noise: &TilingNoise,
-    p: MaskPatternParams,
-    mask_pool: &[RgbImage],
-    instances: &[MaskInstance],
-    uv_mask: Option<&GrayImage>,
-    world_pos: Option<&RgbImage>,
-    tri_scale: f32,
-) -> RustMasks {
-    let m = mask_pattern(w, h, noise, p, mask_pool, instances, uv_mask, world_pos, tri_scale);
-    RustMasks { core: m.core, body: m.body, edge: m.edge, height: m.height }
-}
-
 // ============ Модуляция ============
 
 pub fn modulate_by_placement(pattern: &GrayImage, placement: &GrayImage, _bias: f32) -> GrayImage {
@@ -968,30 +1154,5 @@ mod tests {
     #[test]
     fn test_smoothstep() {
         assert!((smoothstep(0.0, 1.0, -0.5) - 0.0).abs() < 0.001);
-    }
-
-    #[test]
-    fn test_streaks_body_debug() {
-        let w = 1024u32;
-        let h = 1024u32;
-        let p = StreaksProceduralParams {
-            count: 28.0,
-            size: 0.015,
-            stretch: 20.0,
-            threshold: 0.2,
-            sharpness: 0.6,
-            waviness: 0.0,
-            pos_x: 0.0,
-            pos_y: 0.0,
-            rotation: 0.0,
-            scale: 1.0,
-            tileable: true,
-        };
-        let var_seed = 756299604u32 + 1 * 7919;
-        let m = streaks_procedural_pattern(w, h, var_seed, p, None, None, 2.0);
-        for (x, y) in [(512u32, 512u32), (256, 512), (768, 512), (512, 256), (512, 768)] {
-            let px = m.body.get_pixel(x, y)[0];
-            println!("BODY {} {} -> {}", x, y, px);
-        }
     }
 }

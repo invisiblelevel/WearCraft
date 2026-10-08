@@ -8,7 +8,7 @@
   import { t } from '../i18n.svelte.js';
   import {
     params, maskParams, pbr, ui, randomSeed, settings, saveSettings,
-    isGeoLimitSupported,
+    viewer,
   } from '../lib/stores.svelte.js';
   import { onLoadMapFor } from '../lib/actions.svelte.js';
 
@@ -22,7 +22,14 @@
   ];
 
   const isDecal = $derived(params.preset === 'decal');
-  const geoOk = $derived(isGeoLimitSupported());
+
+  // Прямое чтение viewer.shape и viewer.loadedModel,
+  // чтобы Svelte 5 точно отследил зависимость.
+  const geoOk = $derived.by(() => {
+    if (viewer.loadedModel) return true;
+    const s = viewer.shape;
+    return s !== 'cube' && s !== 'cylinder' && s !== 'torus';
+  });
 
   function persistGroups() { saveSettings(); }
 </script>
@@ -116,7 +123,6 @@
     user-select: none;
   }
 
-  /* ═══════════ ОБЩИЕ СТИЛИ (используются во всех секциях) ═══════════ */
   :global(.group) {
     margin-bottom: 14px;
   }
@@ -185,7 +191,6 @@
     font-size: 12px;
   }
 
-  /* ═══════════ MAPS ═══════════ */
   :global(.map-row) {
     display: flex;
     align-items: center;
@@ -231,7 +236,6 @@
     cursor: not-allowed;
   }
 
-  /* ═══════════ ОБЩИЕ ЭЛЕМЕНТЫ (используются в 2+ секциях) ═══════════ */
   :global(.reset-btn-sm) {
     background: transparent;
     border: none;

@@ -69,7 +69,7 @@ export async function loadMaskTexture(path) {
       tex.magFilter = THREE.LinearFilter;
       // КРИТИЧНО: без этого шейдер зеркалит маску по Y относительно Rust.
       // Rust читает PNG сверху вниз (Y-down), Three.js по умолчанию — наоборот.
-      tex.flipY = false;
+      tex.flipY = true;
       // КРИТИЧНО: маска — это данные, не цвет. Без этого Three гамма-корректирует её.
       tex.colorSpace = THREE.NoColorSpace;
       cache.set(path, tex);
